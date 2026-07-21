@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  چون وب‌سرور خود برد ESP32 فقط HTTP ساده (بدون HTTPS) صحبت می‌کند و همیشه
+  در یک شبکه‌ی محلی (AP خود برد یا مودم خانگی) قرار دارد، اجازه‌ی ترافیک
+  cleartext را برای کل اپ باز می‌کنیم. محدود کردنش فقط به 192.168.4.1 ممکن
+  است چون آدرس STA (وقتی برد به مودم خانگی وصل است) در شبکه‌های مختلف فرق می‌کند.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

@@ -1,0 +1,53 @@
+name: Build Android APK
+
+# هر بار که روی شاخه main چیزی push کنی، این workflow خودش:
+# ۱) پروژه کاپاسیتور را می‌سازد ۲) پچ HTTP را اعمال می‌کند ۳) با Gradle، APK می‌سازد
+# و در نهایت فایل APK را به‌عنوان "Artifact" در همان اجرای Actions قابل دانلود می‌گذارد.
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install npm dependencies
+        run: npm install
+
+      - name: Add Android platform (Capacitor)
+        run: npx cap add android
+
+      - name: Patch Android project for plain-HTTP access to the ESP32
+        run: |
+          chmod +x android-patches/patch-android.sh
+          ./android-patches/patch-android.sh
+
+      - name: Sync web assets into Android project
+        run: npx cap sync android
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x android/gradlew
+
+      - name: Build debug APK
+        run: cd android && ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cooler-esp32-app-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
