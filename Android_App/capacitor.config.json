@@ -1,0 +1,15 @@
+{
+  "appId": "com.smartcooler.esp32",
+  "appName": "کولر هوشمند ESP32",
+  "webDir": "www",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": true
+  }
+}

@@ -1,0 +1,54 @@
+name: Build Android APK (Local WebView / Capacitor App)
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Smart Cooler APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Install Dependencies & Sync Capacitor
+        working-directory: ./Android_App
+        run: |
+          npm install
+          npx cap sync android
+
+      - name: Grant Execute Permission for Gradlew
+        working-directory: ./Android_App/android
+        run: chmod +x gradlew
+
+      - name: Build Android APK (Debug & Release)
+        working-directory: ./Android_App/android
+        run: ./gradlew assembleDebug assembleRelease
+
+      - name: Upload Debug APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Smart-Cooler-ESP32-App-Debug
+          path: Android_App/android/app/build/outputs/apk/debug/*.apk
+
+      - name: Upload Release (Unsigned) APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Smart-Cooler-ESP32-App-Release
+          path: Android_App/android/app/build/outputs/apk/release/*.apk

@@ -1,0 +1,1230 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>کولر هوشمند ESP32</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    /* ===== پالت رنگی گالری (طرح a) ===== */
+    :root{
+      --font-fa:'Vazirmatn',-apple-system,sans-serif;
+      --font-mono:'Vazirmatn',-apple-system,sans-serif;
+      --bg:#0a0c0d; --panel:#1b1f21; --panel-2:#15181a; --line:rgba(255,255,255,.08); --line-strong:rgba(255,255,255,.14);
+      --accent:#1de9c4; --accent-dim:rgba(29,233,196,.16); --on-accent:#00201b;
+      --on:#1de9c4; --on-dim:rgba(29,233,196,.16); --off:#ff5468; --off-dim:rgba(255,84,104,.14);
+      --warn:#f2a93b; --warn-dim:rgba(242,169,59,.14); --cyan:#29d3c8; --on-cyan:#04201d;
+      --scenario-live:#3ddc84; --scenario-live-dim:rgba(61,220,132,.14); --scenario-next:#f5d020; --scenario-next-dim:rgba(245,208,32,.16);
+      --text:#eef0f1; --text-dim:#868c90; --text-faint:#585c5f; --nav-bg:rgba(15,18,19,.92); --panel-radius:14px; --btn-radius:12px;
+    }
+    *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+    body{margin:0; background:#000; color:var(--text); font-family:var(--font-fa); display:flex; flex-direction:column; align-items:center;}
+
+    /* ===== فریم گوشی ===== */
+    .phone{width:100%; min-height:100vh; background:var(--bg); color:var(--text); display:flex; position:relative; border-left:1px solid var(--line); border-right:1px solid var(--line); max-width:540px;}
+    .phone.col{flex-direction:column;}
+    .phone.row{flex-direction:row;}
+    .main-col{flex:1; display:flex; flex-direction:column; min-width:0;}
+
+    /* ===== نوار بالا ===== */
+    .topbar{padding:16px 18px; position:sticky; top:0; z-index:20; background:var(--bg); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); border-bottom:1px solid var(--line);}
+    .top-row{display:flex; align-items:center; justify-content:space-between;}
+    .brand-name{font-weight:800; font-size:1rem;}
+    .brand-sub{font-family:var(--font-mono); font-size:.66rem; color:var(--text-faint); letter-spacing:.4px;}
+    .conn-badge{display:flex; align-items:center; gap:6px; padding:6px 12px; border-radius:99px; font-size:.7rem; font-weight:700; background:var(--accent-dim); color:var(--accent); font-family:var(--font-mono); cursor:pointer;}
+    .conn-badge .dot{width:6px; height:6px; border-radius:50%; background:var(--accent); box-shadow:0 0 8px var(--accent); animation:pulse 1.8s infinite;}
+    @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+    .conn-badge.connected{background:var(--on-dim); color:var(--on); box-shadow:0 0 8px var(--on-dim);}
+    .conn-badge.connected .dot{background:var(--on); box-shadow:0 0 10px var(--on);}
+    .conn-badge.disconnected{background:var(--off-dim); color:var(--off); box-shadow:0 0 8px var(--off-dim);}
+    .conn-badge.disconnected .dot{background:var(--off); box-shadow:0 0 10px var(--off);}
+    .conn-badge.connecting{background:var(--warn-dim); color:var(--warn); box-shadow:0 0 8px var(--warn-dim);}
+    .conn-badge.connecting .dot{background:var(--warn); box-shadow:0 0 10px var(--warn);}
+
+    /* ===== پنل‌ها ===== */
+    .pages{flex:1; padding:16px 16px 100px 16px;}
+    .page{display:none; flex-direction:column; gap:16px;}
+    .page.active{display:flex;}
+    .panel{background:var(--panel); border:1px solid var(--line); border-radius:var(--panel-radius); padding:18px; position:relative;}
+    .panel.rivets::before, .panel.rivets::after{content:''; position:absolute; width:5px; height:5px; border-radius:50%; background:var(--line-strong); top:10px;}
+    .panel.rivets::before{right:10px;} .panel.rivets::after{left:10px;}
+    .panel-label{display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;}
+    .bar{font-size:.84rem; font-weight:700; color:var(--text); margin:0; display:flex; align-items:center; gap:8px;}
+    .bar::before{content:''; width:3px; height:14px; background:var(--accent); border-radius:2px;}
+
+    /* ===== تب خانه / هیرو ===== */
+    .hero{display:flex; flex-direction:column; align-items:center; justify-content:center; padding:28px 18px; text-align:center;}
+    .ring-wrap{position:relative; width:160px; height:160px; display:flex; align-items:center; justify-content:center; margin-bottom:18px;}
+    .ring-center{width:140px; height:140px; border-radius:50%; background:radial-gradient(circle, var(--panel-2) 0%, var(--panel) 100%); border:1px solid var(--line-strong); display:flex; align-items:center; justify-content:center; position:relative; z-index:2;}
+    .cooler-art{width:86px; height:86px;}
+    .air{fill:none; stroke:var(--accent); stroke-width:2.2; stroke-linecap:round; opacity:0; transition:opacity .4s ease;}
+    .hero.on .air.a1{animation:airPulse 1.4s infinite .1s;}
+    .hero.on .air.a2{animation:airPulse 1.4s infinite .4s;}
+    .hero.on .air.a3{animation:airPulse 1.4s infinite .7s;}
+    @keyframes airPulse{0%{opacity:0; transform:translateY(4px);} 50%{opacity:1; transform:translateY(-2px);} 100%{opacity:0; transform:translateY(-8px);}}
+    .fan-blades{transform-origin:73px 72px; transition:transform .4s ease;}
+    .hero.on .fan-blades{animation:spin 1.2s linear infinite;}
+    @keyframes spin{100%{transform:rotate(360deg);}}
+    .led{fill:#333; transition:all .3s;}
+    .hero.on .led{fill:var(--on); filter:drop-shadow(0 0 6px var(--on));}
+    .hero.off .led{fill:var(--off);}
+    .status-word{font-size:1.3rem; font-weight:800; margin-bottom:4px; color:var(--text);}
+    .status-sub{font-size:.78rem; color:var(--text-dim); margin-bottom:20px; font-family:var(--font-mono);}
+    .manual-btn{width:100%; padding:14px; border-radius:var(--btn-radius); border:none; font-family:var(--font-fa); font-size:.9rem; font-weight:700; cursor:pointer; transition:all .25s ease; background:var(--off-dim); color:var(--off); border:1px solid rgba(255,84,104,.3);}
+    .manual-btn:active{transform:scale(.98);}
+    .manual-btn.isoff{background:var(--on-dim); color:var(--on); border-color:rgba(29,233,196,.3);}
+
+    /* ===== ساعت و تاریخ ===== */
+    .clock-row{display:flex; align-items:center; justify-content:space-between; background:var(--panel-2); padding:12px 16px; border-radius:12px; border:1px solid var(--line); margin-bottom:10px;}
+    .clock-value{font-family:var(--font-mono); font-size:1.4rem; font-weight:800; color:var(--accent); letter-spacing:1px;}
+    .sync-btn{background:var(--accent-dim); color:var(--accent); border:1px solid rgba(29,233,196,.3); padding:8px 14px; border-radius:10px; font-family:var(--font-fa); font-size:.78rem; font-weight:700; cursor:pointer; transition:all .2s;}
+    .sync-btn:active{transform:scale(.96);}
+    .date-value{font-size:.82rem; color:var(--text-dim); margin-bottom:8px; font-family:var(--font-mono);}
+    .sync-note{font-size:.74rem; color:var(--warn);}
+
+    /* ===== آمار و وضعیت‌ها ===== */
+    .stat-row{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;}
+    .stat-box{background:var(--panel-2); border:1px solid var(--line); border-radius:12px; padding:12px; text-align:center;}
+    .stat-value{font-family:var(--font-mono); font-size:1.1rem; font-weight:800; color:var(--text); margin-bottom:4px;}
+    .stat-lbl{font-size:.72rem; color:var(--text-dim);}
+    .hint{font-size:.75rem; color:var(--text-dim); line-height:1.6; margin-top:8px; margin-bottom:14px;}
+    .status-connected{color:var(--on); font-family:var(--font-mono); font-weight:700;}
+    .status-disconnected{color:var(--off); font-family:var(--font-mono); font-weight:700;}
+    .status-connecting{color:var(--warn); font-family:var(--font-mono); font-weight:700;}
+
+    /* ===== سناریوها ===== */
+    .scenario-banner{background:var(--panel-2); border:1px solid var(--line); border-radius:12px; padding:12px 14px; font-size:.78rem; color:var(--text-dim); line-height:1.6; margin-bottom:14px;}
+    .backup-row{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:8px;}
+    .backup-btn{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px; font-family:var(--font-fa); font-size:.78rem; font-weight:700; color:var(--text); text-align:center; cursor:pointer; transition:all .2s; display:flex; align-items:center; justify-content:center; gap:6px;}
+    .backup-btn:active{transform:scale(.98);}
+    .backup-btn.export{border-color:rgba(29,233,196,.25); color:var(--accent);}
+    .backup-btn.import{border-color:rgba(242,169,59,.25); color:var(--warn);}
+    .file-input{display:none;}
+    .backup-note{font-size:.72rem; color:var(--text-faint); margin-bottom:14px;}
+    .header-row{display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;}
+    .fab{width:34px; height:34px; border-radius:10px; background:var(--accent); color:var(--on-accent); display:flex; align-items:center; justify-content:center; font-size:1.3rem; font-weight:800; cursor:pointer; transition:transform .2s;}
+    .fab:active{transform:scale(.92);}
+    .scenario-card{background:var(--panel-2); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:12px; transition:border-color .3s, opacity .3s;}
+    .scenario-card.running{border-color:var(--scenario-live); box-shadow:0 0 12px var(--scenario-live-dim);}
+    .scenario-card.next{border-color:var(--scenario-next); box-shadow:0 0 12px var(--scenario-next-dim);}
+    .scenario-card.scenario-disabled{opacity:.45;}
+    .scenario-card.error-conflict{border-color:var(--off) !important; box-shadow:0 0 12px var(--off-dim) !important;}
+    .scenario-top{display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;}
+    .scenario-name{font-weight:700; font-size:.9rem; display:flex; align-items:center; gap:8px;}
+    .badge-live{background:var(--scenario-live-dim); color:var(--scenario-live); padding:3px 8px; border-radius:6px; font-size:.66rem; font-weight:800; font-family:var(--font-mono);}
+    .badge-next{background:var(--scenario-next-dim); color:var(--scenario-next); padding:3px 8px; border-radius:6px; font-size:.66rem; font-weight:800; font-family:var(--font-mono);}
+    .scenario-actions{display:flex; align-items:center; gap:10px;}
+    .switch{width:44px; height:24px; background:#2a3033; border-radius:99px; position:relative; cursor:pointer; transition:background .3s;}
+    .switch .knob{width:18px; height:18px; background:#fff; border-radius:50%; position:absolute; top:3px; right:3px; transition:transform .3s cubic-bezier(.4,0,.2,1);}
+    .switch.on{background:var(--accent);}
+    .switch.on .knob{transform:translateX(-20px); background:var(--on-accent);}
+    .icon-btn{width:28px; height:28px; border-radius:8px; display:flex; align-items:center; justify-content:center; cursor:pointer; background:rgba(255,255,255,.05); color:var(--text-dim); font-size:.8rem; transition:all .2s;}
+    .icon-btn.danger:hover{background:var(--off-dim); color:var(--off);}
+    .time-row{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;}
+    .time-box{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:8px 12px;}
+    .time-box .lbl{font-size:.68rem; color:var(--text-dim); margin-bottom:4px;}
+    .time-box input[type="time"]{background:transparent; border:none; color:var(--text); font-family:var(--font-mono); font-size:1.05rem; font-weight:700; width:100%; outline:none;}
+    .days-label{font-size:.72rem; color:var(--text-dim); margin-bottom:6px;}
+    .days-row{display:flex; justify-content:space-between; gap:4px;}
+    .day-btn{flex:1; padding:8px 0; background:var(--panel); border:1px solid var(--line); border-radius:8px; color:var(--text-dim); font-family:var(--font-fa); font-size:.76rem; font-weight:600; cursor:pointer; transition:all .2s;}
+    .day-btn.selected{background:var(--accent-dim); border-color:rgba(29,233,196,.35); color:var(--accent); font-weight:800;}
+    .save-btn{width:100%; padding:15px; background:var(--accent); color:var(--on-accent); border:none; border-radius:var(--btn-radius); font-family:var(--font-fa); font-size:.92rem; font-weight:800; cursor:pointer; transition:transform .2s; margin-top:8px;}
+    .save-btn:active{transform:scale(.98);}
+
+    /* ===== فرم‌های تنظیمات ===== */
+    .field{margin-bottom:14px;}
+    .field label{display:block; font-size:.78rem; color:var(--text-dim); margin-bottom:6px;}
+    .field input{width:100%; background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:12px 14px; color:var(--text); font-family:var(--font-fa); font-size:.88rem; outline:none; transition:border-color .2s;}
+    .field input:focus{border-color:var(--accent);}
+    .password-container{position:relative; display:flex; align-items:center;}
+    .password-container input{padding-left:44px;}
+    .toggle-password{position:absolute; left:8px; background:transparent; border:none; color:var(--text-dim); cursor:pointer; padding:6px; display:flex; align-items:center; justify-content:center;}
+    .power-row{display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:4px;}
+    .power-btn{background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:10px 4px; font-family:var(--font-fa); font-size:.78rem; font-weight:600; color:var(--text-dim); cursor:pointer; transition:all .2s;}
+    .power-btn.selected{background:var(--accent-dim); border-color:var(--accent); color:var(--accent); font-weight:800;}
+    .wifi-btn{width:100%; padding:14px; background:var(--panel-2); border:1px solid var(--line-strong); border-radius:var(--btn-radius); font-family:var(--font-fa); font-size:.88rem; font-weight:700; color:var(--text); cursor:pointer; transition:all .2s; margin-top:6px;}
+    .wifi-btn:active{transform:scale(.98); border-color:var(--accent);}
+
+    /* ===== نوار پایینی نویگیشن ===== */
+    .nav-orbit{position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:540px; background:var(--nav-bg); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); border-top:1px solid var(--line); display:flex; justify-content:space-around; padding:8px 16px; z-index:50;}
+    .nav-btn{background:transparent; border:none; color:var(--text-dim); display:flex; flex-direction:column; align-items:center; gap:4px; padding:6px 16px; font-family:var(--font-fa); font-size:.72rem; font-weight:600; cursor:pointer; transition:color .25s; position:relative;}
+    .nav-btn svg{width:22px; height:22px; stroke-width:1.8;}
+    .nav-btn.active{color:var(--accent);}
+    .nav-btn.active::before{content:''; position:absolute; top:0; width:20px; height:3px; background:var(--accent); border-radius:0 0 4px 4px;}
+
+    /* ===== مودال و هشدارها ===== */
+    #custom-alert-overlay, #progress-modal-overlay{position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,.75); backdrop-filter:blur(4px); z-index:100; display:none;}
+    #custom-alert, #progress-modal, #ip-config-modal{position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); width:88%; max-width:380px; background:var(--panel); border:1px solid var(--line-strong); border-radius:18px; padding:22px; z-index:110; display:none; text-align:center; box-shadow:0 14px 40px rgba(0,0,0,.6);}
+    #custom-alert-text{font-size:.9rem; color:var(--text); line-height:1.7; margin-bottom:20px;}
+    .alert-btn{width:100%; padding:12px; background:var(--accent); color:var(--on-accent); border:none; border-radius:12px; font-family:var(--font-fa); font-size:.9rem; font-weight:800; cursor:pointer;}
+    .progress-track{width:100%; height:8px; background:var(--panel-2); border-radius:4px; overflow:hidden; margin:16px 0 10px 0; border:1px solid var(--line);}
+    #progress-bar-fill{width:0%; height:100%; background:var(--accent); transition:width .2s ease;}
+    #progress-percent{font-family:var(--font-mono); font-size:.84rem; font-weight:700; color:var(--accent);}
+    
+    /* ===== Toast ===== */
+    #toast-wrap{position:fixed; top:70px; left:50%; transform:translateX(-50%); width:90%; max-width:440px; z-index:90; display:flex; flex-direction:column; gap:8px; pointer-events:none;}
+    .toast{background:var(--panel); border:1px solid var(--line-strong); border-radius:12px; padding:12px 16px; font-size:.82rem; color:var(--text); box-shadow:0 8px 24px rgba(0,0,0,.5); opacity:0; transform:translateY(-12px); transition:opacity .3s ease, transform .3s ease;}
+    .toast.show{opacity:1; transform:translateY(0);}
+    .toast-good{border-left:4px solid var(--on);}
+    .toast-bad{border-left:4px solid var(--off);}
+  </style>
+</head>
+<body>
+
+  <!-- Overlay & Alerts -->
+  <div id="custom-alert-overlay" onclick="closeAlert()"></div>
+  <div id="custom-alert">
+    <div id="custom-alert-text"></div>
+    <button class="alert-btn" onclick="closeAlert()">متوجه شدم</button>
+  </div>
+
+  <div id="progress-modal">
+    <h4 id="progress-title" style="margin:0 0 10px 0; font-size:1rem; color:var(--text);">در حال ذخیره...</h4>
+    <div id="progress-text" style="font-size:.82rem; color:var(--text-dim); line-height:1.6;">لطفاً منتظر بمانید</div>
+    <div class="progress-track"><div id="progress-bar-fill"></div></div>
+    <div id="progress-percent">0%</div>
+  </div>
+
+  <!-- تنظیم IP مودال -->
+  <div id="ip-config-modal">
+    <h4 style="margin:0 0 12px 0; font-size:1rem; color:var(--text);">تنظیم آدرس IP برد کولر</h4>
+    <div style="font-size:.8rem; color:var(--text-dim); line-height:1.6; margin-bottom:14px; text-align:right;">
+      هنگام اتصال مستقیم به وای‌فای برد (<code>ESP32_Timer_Hub</code>) آدرس پیش‌فرض <code>192.168.4.1</code> است. اگر برد به مودم خانه وصل است، آدرس IP جدید آن را وارد کنید:
+    </div>
+    <div class="field" style="text-align:right;">
+      <input type="text" id="ip-input-field" value="192.168.4.1" placeholder="مثلاً 192.168.1.50" style="direction:ltr; text-align:left; font-family:var(--font-mono);">
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:16px;">
+      <button type="button" class="wifi-btn" style="margin:0; background:var(--accent); color:var(--on-accent); border:none;" onclick="saveBoardIPModal()">ذخیره اتصال</button>
+      <button type="button" class="wifi-btn" style="margin:0;" onclick="closeIpModal()">انصراف</button>
+    </div>
+  </div>
+
+  <div class="phone col">
+    <div class="topbar">
+      <div class="top-row">
+        <div style="cursor:pointer;" onclick="openIpModal()" title="تنظیم آدرس IP اتصال">
+          <div class="brand-name">کولر هوشمند ESP32</div>
+          <div class="brand-sub">ESP32 · TIMER HUB <span id="top-ip-tag" style="color:var(--cyan); font-weight:700;">[192.168.4.1]</span></div>
+        </div>
+        <div class="conn-badge connecting" id="connection-status" onclick="openIpModal()" title="برای تغییر IP کلیک کنید"><span class="dot"></span> در حال اتصال...</div>
+      </div>
+    </div>
+
+    <div id="toast-wrap"></div>
+
+    <div class="pages">
+      <!-- ===== تب خانه ===== -->
+      <div class="page active" id="tab-home">
+        <div id="cooler-display-status" class="panel hero rivets off">
+          <div class="ring-wrap">
+            <div class="ring-center">
+              <svg class="cooler-art" viewBox="0 0 146 146" aria-label="کولر">
+                <defs><linearGradient id="coolerShade" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#344347"/><stop offset="1" stop-color="#182023"/></linearGradient></defs>
+                <path class="air a1" d="M108 48c13-5 17 2 25-4"/><path class="air a2" d="M109 61c11-5 17 3 27-3"/><path class="air a3" d="M108 74c14-5 18 3 27-3"/>
+                <rect class="cooler-body" x="33" y="20" width="76" height="104" rx="14" fill="url(#coolerShade)"/>
+                <path class="cooler-top" d="M43 20h56l-6-8H49z"/><rect class="grille" x="41" y="37" width="60" height="68" rx="10"/>
+                <path class="grille-line" d="M46 48h50M44 58h54M44 68h54M44 78h54M46 88h50M50 98h42"/>
+                <g class="fan-blades">
+                  <path class="blade" d="M73 69c-5-18 7-25 11-17 3 7-2 14-8 19z"/><path class="blade" d="M76 72c18-5 25 7 17 11-7 3-14-2-19-8z"/><path class="blade" d="M73 75c5 18-7 25-11 17-3-7 2-14 8-19z"/><path class="blade" d="M70 72c-18 5-25-7-17-11 7-3 14 2 19 8z"/>
+                </g>
+                <circle class="hub" cx="73" cy="72" r="6"/>
+                <rect x="51" y="111" width="40" height="4" rx="2" fill="#101718"/><circle class="led" cx="73" cy="27" r="2.6"/>
+              </svg>
+            </div>
+          </div>
+          <div class="status-word" id="cooler-status-text">کولر خاموش است</div>
+          <div class="status-sub" id="cooler-status-sub">حالت: خودکار (سناریو)</div>
+          <button class="manual-btn isoff" id="manual-btn" onclick="toggleManual()">روشن کردن دستی کولر</button>
+        </div>
+
+        <!-- پنل ساعت داخلی برد -->
+        <div class="panel rivets">
+          <div class="panel-label"><h3 class="bar">ساعت داخلی برد</h3></div>
+          <div class="clock-row">
+            <div class="clock-value" id="board-time">--:--:--</div>
+            <button class="sync-btn" onclick="syncTime()">همگام‌سازی با گوشی</button>
+          </div>
+          <div class="date-value" id="board-date">تاریخ و روز هفته: --</div>
+          <div class="sync-note" id="sync-warning">در حال دریافت وضعیت ساعت...</div>
+        </div>
+
+        <!-- پنل اتصال اینترنت / STA -->
+        <div class="panel rivets">
+          <div class="panel-label"><h3 class="bar">اتصال اینترنت</h3></div>
+          <div style="font-size:.83rem; color:var(--text-dim);">وضعیت اتصال مودم (STA): <span id="internet-wifi-status" style="font-family:var(--font-mono); color:var(--cyan);">در حال بررسی...</span></div>
+          <div style="font-size:.78rem; color:var(--text-dim); margin-top:8px;">چرخه اتصال STA: <span id="sta-cycle-status">در حال بررسی...</span></div>
+          <div style="font-size:.78rem; color:var(--text-dim); margin-top:8px;">وضعیت اینترنت/NTP: <span id="internet-mode-status" style="font-family:var(--font-mono);">در حال بررسی...</span></div>
+          <div style="font-size:.78rem; color:var(--text-dim); margin-top:8px;">آخرین دریافت موفق ساعت: <span id="ntp-last-update" style="font-family:var(--font-mono);">در حال بررسی...</span></div>
+        </div>
+
+        <!-- پنل آمار سوییچ و مدت‌کارکرد رله -->
+        <div class="panel rivets">
+          <div class="panel-label"><h3 class="bar">سلامت موتور</h3></div>
+          <div class="stat-row">
+            <div class="stat-box" title="تعداد دفعاتی که کمپرسور از زمان اولین راه‌اندازی برد روشن شده"><div class="stat-value" id="relay-switch-count">--</div><div class="stat-lbl">تعداد روشن‌شدن</div></div>
+            <div class="stat-box" title="مجموع مدتی که کمپرسور در کل روشن بوده"><div class="stat-value" id="relay-on-duration">--</div><div class="stat-lbl">مجموع مدت کارکرد</div></div>
+          </div>
+          <div class="hint" style="margin-top:12px; margin-bottom:0;">برای سلامت و عمر بیشتر کمپرسور، بهتر است بین هر خاموش و روشن شدن حداقل چند دقیقه فاصله باشد.</div>
+        </div>
+      </div><!-- /page home -->
+
+      <!-- ===== تب سناریوها ===== -->
+      <div class="page" id="tab-scenarios">
+        <div class="scenario-banner" id="manual-disabled-note" style="display:none;">تنظیمات سناریو در حالت دستی کولر غیرفعال است؛ این قابلیت پس از خاموش کردن حالت دستی کولر فعال می‌شود.</div>
+        <div class="scenario-banner">تا زمانی که دکمهٔ «ذخیره و پیاده‌سازی برنامه‌ها» را نزنید، سناریوها اجرا نمی‌شوند.</div>
+        <div class="backup-row">
+          <button type="button" class="backup-btn export" onclick="exportScenarios()">↓ پشتیبان‌گیری سناریوها</button>
+          <label class="backup-btn import" for="scenario-import-file">↑ بازیابی از فایل</label>
+          <input id="scenario-import-file" class="file-input" type="file" accept=".json,application/json" onchange="importScenarios(event)">
+        </div>
+        <div class="backup-note">فایل پشتیبان با فرمت JSON در گوشی شما ذخیره می‌شود.</div>
+        <div class="panel rivets">
+          <div class="header-row"><h3 class="panel-label bar" style="margin:0;">برنامه‌ریزی سناریوها</h3><div class="fab" onclick="addScenario()" title="افزودن سناریو جدید">+</div></div>
+          <form id="scenarios-form" onsubmit="saveScenariosForm(event)">
+            <div id="scenarios-list">
+              <!-- کارت‌های سناریو توسط JS به محض لود صفحه ساخته و با اطلاعات برد پر می‌شوند -->
+            </div>
+            <button type="submit" class="save-btn">ذخیره و پیاده‌سازی برنامه‌ها</button>
+          </form>
+        </div>
+      </div><!-- /page scenarios -->
+
+      <!-- ===== تب تنظیمات و شبکه ===== -->
+      <div class="page" id="tab-wifi">
+        <!-- تنظیم آدرس IP ارتباط اپ با برد -->
+        <div class="panel rivets">
+          <div class="panel-label"><h3 class="bar">ارتباط برنامه با برد (آدرس IP)</h3></div>
+          <div class="hint">هنگام اتصال مستقیم به Access Point برد (<code>ESP32_Timer_Hub</code>) آدرس پیش‌فرض <code>192.168.4.1</code> است. اگر برد و گوشی به مودم خانه وصل هستند، آدرس IP برد در شبکه مودم را اینجا وارد کنید.</div>
+          <div style="display:flex; align-items:center; justify-content:space-between; background:var(--panel-2); padding:10px 14px; border-radius:10px; border:1px solid var(--line); margin-top:10px;">
+            <div style="font-family:var(--font-mono); font-size:0.95rem; color:var(--cyan); font-weight:700;" id="current-ip-display">192.168.4.1</div>
+            <button type="button" class="sync-btn" onclick="openIpModal()">تغییر آدرس IP</button>
+          </div>
+        </div>
+
+        <!-- تنظیمات AP -->
+        <form action="/save-ap" method="POST" onsubmit="saveApForm(event)">
+          <div class="panel rivets">
+            <div class="panel-label"><h3 class="bar">تنظیمات فرستنده (AP)</h3></div>
+            <div class="hint">این بخش برای اتصال مستقیم گوشی به خود برد است (شبکه‌ای که گوشی به آن وصل می‌شود). ذخیره‌ی این بخش باعث ری‌استارت برد می‌شود چون گوشی باید به شبکه‌ی جدید وصل شود.</div>
+            <div class="field"><label>نام شبکه (SSID)</label><input name="ssid" value="ESP32_Timer_Hub" maxlength="32"></div>
+            <div class="field">
+              <label>گذرواژه</label>
+              <div class="password-container">
+                <input type="password" name="pass" id="wifi-pass" value="12345678" maxlength="32">
+                <button type="button" class="toggle-password" onclick="togglePasswordVisibility()" title="نمایش/مخفی‌سازی رمز عبور">
+                  <svg id="eye-icon" viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+            </div>
+            <button type="submit" class="wifi-btn">ذخیره تنظیمات فرستنده (ری‌استارت می‌شود)</button>
+          </div>
+        </form>
+
+        <!-- چرخه‌ی روشن/خاموش دوره‌ای AP -->
+        <form action="/save-ap-cycle" method="POST" onsubmit="saveApCycleForm(event)">
+          <div class="panel rivets">
+            <div class="panel-label"><h3 class="bar">چرخه روشن/خاموش فرستنده (AP)</h3></div>
+            <div class="scenario-top" style="margin-bottom:14px;">
+              <div class="scenario-name">فعال‌سازی چرخه دوره‌ای</div>
+              <div class="scenario-actions">
+                <div class="switch" id="ap-cycle-switch" onclick="toggleApCycleSwitch(this)"><div class="knob"></div></div>
+              </div>
+            </div>
+            <input type="checkbox" name="cycle_enabled" id="ap-cycle-enabled" value="1" style="display:none;">
+            <div class="hint">وقتی فعال باشد، فرستنده وای‌فای برد به‌صورت دوره‌ای خاموش و روشن می‌شود تا هم دمای برد پایین بیاید و هم تابش دائمی نداشته باشد. تا وقتی گوشی به AP وصل است، این چرخه اجرا نمی‌شود و AP روشن می‌ماند.</div>
+            <div class="field"><label>مدت روشن بودن (دقیقه، ۱ تا ۱۴۴۰)</label><input type="number" name="on_minutes" value="10" min="1" max="1440" step="1" inputmode="numeric"></div>
+            <div class="field"><label>مدت خاموش بودن (دقیقه، ۱ تا ۱۴۴۰)</label><input type="number" name="off_minutes" value="5" min="1" max="1440" step="1" inputmode="numeric"></div>
+            <div class="field">
+              <label>قدرت سیگنال‌دهی</label>
+              <div class="power-row" id="tx-power-row">
+                <button type="button" class="power-btn" data-power="0" onclick="selectTxPower(0)">کم</button>
+                <button type="button" class="power-btn" data-power="1" onclick="selectTxPower(1)">متوسط</button>
+                <button type="button" class="power-btn" data-power="2" onclick="selectTxPower(2)">زیاد</button>
+                <button type="button" class="power-btn selected" data-power="3" onclick="selectTxPower(3)">حداکثر</button>
+              </div>
+              <input type="hidden" name="tx_power" id="tx-power-value" value="3">
+              <div class="hint" style="margin-top:8px;margin-bottom:0;">تقریبی: کم ≈۳ میلی‌وات، متوسط ≈۱۳ میلی‌وات، زیاد ≈۳۲ میلی‌وات، حداکثر ≈۹۰ میلی‌وات. هرچه کمتر، هم گرمای برد کمتر و هم برد سیگنال کوتاه‌تر می‌شود.</div>
+            </div>
+            <div style="font-size:.82rem; color:var(--text-dim); margin-bottom:16px;">وضعیت چرخه: <span id="ap-cycle-status">در حال بررسی...</span></div>
+            <button type="submit" class="wifi-btn">ذخیره تنظیمات چرخه AP</button>
+          </div>
+        </form>
+
+        <!-- تنظیمات اتصال به مودم اینترنت (STA) -->
+        <form action="/save-sta" method="POST" onsubmit="saveStaForm(event)">
+          <div class="panel rivets">
+            <div class="panel-label"><h3 class="bar">اتصال به مودم اینترنت</h3></div>
+            <div class="scenario-top" style="margin-bottom:14px;">
+              <div class="scenario-name">فعال‌سازی اینترنت / NTP</div>
+              <div class="scenario-actions">
+                <div class="switch on" id="internet-switch" onclick="toggleNet(this)"><div class="knob"></div></div>
+              </div>
+            </div>
+            <input type="checkbox" name="internet" id="internet-enabled" value="1" checked style="display:none;">
+            <div class="hint">وقتی این کلید روشن باشد، برد از مودم/روتر برای اینترنت و دریافت خودکار ساعت استفاده می‌کند. چرخهٔ قطع و وصل خودِ STA از روی دو کادر زمان پایین کنترل می‌شود؛ اگر زمان خاموشی را ۰ بگذارید، STA همیشه روشن می‌ماند.</div>
+            <div class="field"><label>SSID مودم/روتر اینترنت (اختیاری)</label><input name="sta_ssid" value="" maxlength="32" placeholder="مثلاً Home-WiFi"></div>
+            <div class="field"><label>رمز وای‌فای مودم/روتر (اگر دارد حداقل ۸ کاراکتر)</label><input type="password" name="sta_pass" value="" maxlength="64" placeholder="اختیاری برای شبکه بدون رمز"></div>
+            <div class="field"><label>مدت روشن بودن اتصال STA (دقیقه، ۱ تا ۱۴۴۰)</label><input type="number" name="sta_on_minutes" value="10" min="1" max="1440" step="1" inputmode="numeric"></div>
+            <div class="field"><label>مدت خاموش بودن اتصال STA (دقیقه، ۰ تا ۱۴۴۰)</label><input type="number" name="sta_off_minutes" value="0" min="0" max="1440" step="1" inputmode="numeric"></div>
+            <div class="hint">اگر مدت خاموش بودن را ۰ قرار دهید، اتصال مودم اینترنت (STA) دائماً روشن می‌ماند و دیگر خاموش/روشن دوره‌ای نخواهد داشت.</div>
+            <div style="font-size:.82rem; color:var(--text-dim); margin-bottom:6px;">وضعیت STA: <span id="sta-status-inline">در حال بررسی...</span></div>
+            <div style="font-size:.82rem; color:var(--text-dim); margin-bottom:6px;">وضعیت چرخه STA: <span id="sta-cycle-status-inline">در حال بررسی...</span></div>
+            <div style="font-size:.82rem; color:var(--text-dim); margin-bottom:6px;">وضعیت اینترنت/NTP: <span id="internet-mode-inline">در حال بررسی...</span></div>
+            <div style="font-size:.82rem; color:var(--text-dim); margin-bottom:16px;">آخرین دریافت موفق ساعت: <span id="ntp-last-update-inline">در حال بررسی...</span></div>
+            <button type="submit" class="wifi-btn">ذخیره تنظیمات مودم / اینترنت (بدون ری‌استارت)</button>
+          </div>
+        </form>
+
+        <!-- محافظت کمپرسور -->
+        <form action="/save-protection" method="POST" onsubmit="saveProtectionForm(event)">
+          <div class="panel rivets">
+            <div class="panel-label"><h3 class="bar">محافظت کمپرسور</h3></div>
+            <div class="hint">حداقل مدت خاموش‌بودن کولر پیش از روشن‌شدن دوباره را تعیین کنید. این محافظت برای سناریو و روشن‌کردن دستی اعمال می‌شود. مقدار ۰ یعنی غیرفعال.</div>
+            <div class="field"><label>حداقل فاصله خاموش تا روشن (دقیقه، ۰ تا ۱۴۴۰)</label><input type="number" name="min_off" value="3" min="0" max="1440" step="1" inputmode="numeric"></div>
+            <div style="font-size:.82rem; color:var(--text-dim); margin-bottom:16px;">وضعیت محافظت: <span id="protection-status">در حال بررسی...</span></div>
+            <button type="submit" class="wifi-btn">ذخیره تنظیمات محافظت</button>
+          </div>
+        </form>
+      </div><!-- /page wifi -->
+
+    </div><!-- /pages -->
+
+    <!-- نوار پایین -->
+    <div class="nav-orbit">
+      <button class="nav-btn active" id="tab-btn-home" onclick="switchTab('home')" data-nav="home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-7 9 7"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/></svg>
+        <span>خانه</span>
+      </button>
+      <button class="nav-btn" id="tab-btn-scenarios" onclick="switchTab('scenarios')" data-nav="scenarios">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 9h18"/></svg>
+        <span>سناریوها</span>
+      </button>
+      <button class="nav-btn" id="tab-btn-wifi" onclick="switchTab('wifi')" data-nav="wifi">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.1 2.1-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56v.1h-3v-.1a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06-2.1-2.1.06-.06A1.7 1.7 0 0 0 7.06 15a1.7 1.7 0 0 0-1.56-1.03h-.1v-3h.1A1.7 1.7 0 0 0 7.06 9.94a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.1-2.1.06.06a1.7 1.7 0 0 0 1.88.34 1.7 1.7 0 0 0 1.03-1.56v-.1h3v.1a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.1 2.1-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.03h.1v3h-.1A1.7 1.7 0 0 0 19.4 15z"/></svg>
+        <span>تنظیمات</span>
+      </button>
+    </div>
+  </div><!-- /phone -->
+
+  <script>
+    // ===================== مدیریت BASE_URL جهت اتصال به برد ESP32 =====================
+    let BASE_URL = localStorage.getItem('esp32_base_url') || 'http://192.168.4.1';
+
+    function openIpModal() {
+      const input = document.getElementById('ip-input-field');
+      if (input) input.value = BASE_URL.replace('http://', '').replace('https://', '');
+      document.getElementById('custom-alert-overlay').style.display = 'block';
+      document.getElementById('ip-config-modal').style.display = 'block';
+    }
+
+    function closeIpModal() {
+      document.getElementById('custom-alert-overlay').style.display = 'none';
+      document.getElementById('ip-config-modal').style.display = 'none';
+    }
+
+    function saveBoardIPModal() {
+      const input = document.getElementById('ip-input-field');
+      if (input && input.value.trim() !== '') {
+        let val = input.value.trim();
+        if (!val.startsWith('http://') && !val.startsWith('https://')) {
+          val = 'http://' + val;
+        }
+        if (val.endsWith('/')) {
+          val = val.slice(0, -1);
+        }
+        BASE_URL = val;
+        localStorage.setItem('esp32_base_url', BASE_URL);
+        updateIpDisplay();
+        closeIpModal();
+        showModal('آدرس IP برد به‌روزرسانی شد: ' + BASE_URL);
+        resetActivity();
+        fetchStatus();
+        loadScenariosFromBoard();
+      }
+    }
+
+    function updateIpDisplay() {
+      const disp = document.getElementById('current-ip-display');
+      const tag = document.getElementById('top-ip-tag');
+      const cleanIp = BASE_URL.replace('http://', '').replace('https://', '');
+      if (disp) disp.innerText = cleanIp;
+      if (tag) tag.innerText = '[' + cleanIp + ']';
+    }
+
+    function apiFetch(endpoint, options) {
+      return fetch(BASE_URL + endpoint, options);
+    }
+
+    // ===================== توابع پایه هشدار =====================
+    function showModal(msg){
+      document.getElementById('custom-alert-text').innerText = msg;
+      document.getElementById('custom-alert-overlay').style.display = 'block';
+      document.getElementById('custom-alert').style.display = 'block';
+    }
+    function closeAlert(){
+      document.getElementById('custom-alert-overlay').style.display = 'none';
+      document.getElementById('custom-alert').style.display = 'none';
+    }
+
+    // ===================== تولید ۲۰ کارت سناریو در DOM =====================
+    function initScenarioCards() {
+      const list = document.getElementById('scenarios-list');
+      if (!list) return;
+      let html = '';
+      const dayNames = ["ش", "ی", "د", "س", "چ", "پ", "ج"];
+      for (let i = 0; i < 20; i++) {
+        html += `<div class='scenario-card' id='row_${i}' style='display:none;'>
+          <div class='scenario-top'>
+            <div class='scenario-name'>سناریو ${i + 1} </div>
+            <div class='scenario-actions'>
+              <div class='switch on' onclick='toggleScenarioEnabled(${i})'><div class='knob'></div></div>
+              <div class='icon-btn danger' onclick='removeScenario(${i})' title='حذف سناریو'>✕</div>
+            </div>
+          </div>
+          <div class='time-row'>
+            <div class='time-box'><div class='lbl'>روشن</div><input type='time' name='sh_${i}' value='' step='60'></div>
+            <div class='time-box'><div class='lbl'>خاموش</div><input type='time' name='eh_${i}' value='' step='60'></div>
+          </div>
+          <div class='days-label'>روزهای اجرا</div>
+          <div class='days-row'>`;
+        for (let day = 0; day < 7; day++) {
+          html += `<button type='button' class='day-btn selected' data-day='${day}' onclick='toggleScenarioDay(${i},${day})'>${dayNames[day]}</button>`;
+        }
+        html += `</div>
+          <input type='hidden' name='wd_${i}' value='127'>
+          <input type='checkbox' name='act_${i}' value='1' checked style='display:none;'>
+          <input type='checkbox' name='en_${i}' value='1' checked style='display:none;'>
+        </div>`;
+      }
+      list.innerHTML = html;
+      updateIpDisplay();
+    }
+
+    // ===================== لود سناریوها از روی برد ESP32 =====================
+    function loadScenariosFromBoard() {
+      apiFetch('/scenarios')
+        .then(r => {
+          if (!r.ok) throw new Error('Failed to fetch scenarios');
+          return r.json();
+        })
+        .then(data => {
+          if (!Array.isArray(data)) return;
+          for (let i = 0; i < 20; i++) {
+            const row = document.getElementById('row_' + i);
+            if (!row) continue;
+            if (i < data.length && (data[i].active || (data[i].sh !== 0 || data[i].eh !== 0 || data[i].sm !== 0 || data[i].em !== 0))) {
+              const x = data[i];
+              row.style.display = 'block';
+              const act = row.querySelector('input[name^="act_"]');
+              if (act) act.checked = true;
+              const en = row.querySelector('input[name^="en_"]');
+              if (en) en.checked = (x.en !== false);
+              const sw = row.querySelector('.switch');
+              if (sw) sw.classList.toggle('on', en.checked);
+              row.classList.toggle('scenario-disabled', !en.checked);
+              const shIn = row.querySelector('input[name^="sh_"]');
+              if (shIn) shIn.value = String(x.sh).padStart(2, '0') + ':' + String(x.sm).padStart(2, '0');
+              const ehIn = row.querySelector('input[name^="eh_"]');
+              if (ehIn) ehIn.value = String(x.eh).padStart(2, '0') + ':' + String(x.em).padStart(2, '0');
+              const wdIn = row.querySelector('input[name^="wd_"]');
+              const mask = Number.isInteger(x.wd) && x.wd >= 1 && x.wd <= 127 ? x.wd : 127;
+              if (wdIn) wdIn.value = mask;
+              row.querySelectorAll('.day-btn').forEach(btn => {
+                btn.classList.toggle('selected', (mask & (1 << parseInt(btn.dataset.day, 10))) !== 0);
+              });
+            } else {
+              row.style.display = 'none';
+              const act = row.querySelector('input[name^="act_"]');
+              if (act) act.checked = false;
+            }
+          }
+          updateScenarioOrder();
+        })
+        .catch(err => {
+          console.log('Scenarios not yet loaded from board or board offline:', err);
+        });
+    }
+
+    function togglePasswordVisibility(){
+      const inp = document.getElementById('wifi-pass');
+      if(inp) inp.type = (inp.type === 'password') ? 'text' : 'password';
+    }
+
+    function switchTab(tabId){
+      document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+      document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+      if(tabId==='home'){ document.getElementById('tab-btn-home').classList.add('active'); document.getElementById('tab-home').classList.add('active'); }
+      else if(tabId==='scenarios'){ document.getElementById('tab-btn-scenarios').classList.add('active'); document.getElementById('tab-scenarios').classList.add('active'); updateScenarioOrder(); }
+      else if(tabId==='wifi'){ document.getElementById('tab-btn-wifi').classList.add('active'); document.getElementById('tab-wifi').classList.add('active'); }
+    }
+
+    // جابه‌جایی لمسی بین تب‌ها
+    let swipeStartX=0, swipeStartY=0, swipeEligible=false;
+    const pageOrder=['home','scenarios','wifi'];
+    document.addEventListener('touchstart', function(e){
+      if(e.touches.length!==1) return;
+      const target=e.target;
+      swipeEligible=!target.closest('input,button,.switch,.fab,.icon-btn');
+      swipeStartX=e.touches[0].clientX; swipeStartY=e.touches[0].clientY;
+    },{passive:true});
+    document.addEventListener('touchend', function(e){
+      if(!swipeEligible || !e.changedTouches.length) return;
+      const dx=e.changedTouches[0].clientX-swipeStartX, dy=e.changedTouches[0].clientY-swipeStartY;
+      if(Math.abs(dx)<65 || Math.abs(dx)<Math.abs(dy)*1.4) return;
+      const active=document.querySelector('.page.active');
+      const current=active ? active.id.replace('tab-','') : 'home';
+      const index=pageOrder.indexOf(current);
+      const next=dx<0 ? index+1 : index-1;
+      if(next>=0 && next<pageOrder.length) switchTab(pageOrder[next]);
+    },{passive:true});
+
+    function updateScenariosManualNote(){
+      const note=document.getElementById('manual-disabled-note');
+      if(!note) return;
+      const mb=document.getElementById('manual-btn');
+      const manualOn = mb && !mb.classList.contains('isoff');
+      note.style.display = manualOn ? 'block' : 'none';
+    }
+
+    function syncTime(){
+      let now = new Date();
+      apiFetch('/sync', {method:'POST', body:'h='+now.getHours()+'&m='+now.getMinutes()+'&s='+now.getSeconds()+'&y='+now.getFullYear()+'&mon='+(now.getMonth()+1)+'&d='+now.getDate()+'&wd='+((now.getDay()+1)%7), headers:{'Content-Type':'application/x-www-form-urlencoded'}})
+        .then(r=>showModal('ساعت داخلی دستگاه با موفقیت با گوشی شما همگام‌سازی شد.'))
+        .catch(()=>showModal('خطا در همگام‌سازی ساعت با برد ESP32! لطفاً اتصال وای‌فای را بررسی کنید.'));
+    }
+
+    function toggleManual(){
+      let btn = document.getElementById('manual-btn');
+      if(btn){
+        btn.classList.toggle('isoff');
+        btn.innerText = btn.classList.contains('isoff') ? 'روشن کردن دستی کولر' : 'خاموش کردن دستی کولر';
+      }
+      updateScenariosManualNote();
+      apiFetch('/toggle-manual', {method:'POST'});
+    }
+
+    function toggleScenarioDay(index, day){
+      const row=document.getElementById('row_'+index); if(!row) return;
+      const input=row.querySelector('input[name="wd_'+index+'"]');
+      const btn=row.querySelector('.day-btn[data-day="'+day+'"]'); if(!input || !btn) return;
+      let mask=parseInt(input.value,10); if(isNaN(mask)) mask=127;
+      const bit=1<<day;
+      if(mask & bit){ if((mask & 127)===bit){ showModal('حداقل یک روز برای اجرای سناریو انتخاب کنید.'); return; } mask &= ~bit; }
+      else mask |= bit;
+      input.value=mask; btn.classList.toggle('selected',(mask&bit)!==0);
+    }
+
+    function toggleScenarioEnabled(index){
+      const row = document.getElementById('row_'+index);
+      if(!row) return;
+      const en = row.querySelector('input[name="en_'+index+'"]');
+      const sw = row.querySelector('.switch');
+      if(!en || !sw) return;
+      en.checked = !en.checked;
+      if(en.checked){
+        row.classList.remove('scenario-disabled');
+        sw.classList.add('on');
+      } else {
+        row.classList.add('scenario-disabled');
+        row.classList.remove('running','next');
+        sw.classList.remove('on');
+      }
+      updateScenarioOrder();
+    }
+
+    function toggleNet(sw){
+      const cb = document.getElementById('internet-enabled');
+      if(!cb) return;
+      cb.checked = !cb.checked;
+      sw.classList.toggle('on', cb.checked);
+    }
+
+    function toggleApCycleSwitch(sw){
+      const cb = document.getElementById('ap-cycle-enabled');
+      if(!cb) return;
+      cb.checked = !cb.checked;
+      sw.classList.toggle('on', cb.checked);
+    }
+
+    function selectTxPower(level){
+      const row=document.getElementById('tx-power-row');
+      const input=document.getElementById('tx-power-value');
+      if(!row || !input) return;
+      input.value=level;
+      row.querySelectorAll('.power-btn').forEach(btn=>btn.classList.toggle('selected', parseInt(btn.dataset.power,10)===level));
+    }
+
+    function updateScenarioOrder(){
+      const rows = Array.from(document.querySelectorAll('.scenario-card'));
+      rows.forEach(row=>{
+        const visible = row.style.display !== 'none';
+        if(!visible){ row.style.order = 10000; return; }
+        const sh = row.querySelector('input[name^="sh_"]');
+        const eh = row.querySelector('input[name^="eh_"]');
+        let w = -1;
+        if(sh && sh.value && eh && eh.value){
+          const p = sh.value.split(':');
+          if(p.length===2) w = parseInt(p[0])*60 + parseInt(p[1]);
+        }
+        row.style.order = w;
+      });
+      const vis = rows.filter(r=>r.style.display!=='none');
+      vis.sort((a,b)=>parseInt(a.style.order)-parseInt(b.style.order));
+      vis.forEach((row,idx)=>{
+        const name = row.querySelector('.scenario-name');
+        if(name && name.childNodes.length) name.childNodes[0].nodeValue = 'سناریو '+(idx+1)+' ';
+      });
+    }
+
+    function addScenario(){
+      const rows = document.querySelectorAll('.scenario-card');
+      for(let i=0;i<rows.length;i++){
+        if(rows[i].style.display==='none'){
+          rows[i].style.display='block';
+          const cb=rows[i].querySelector('input[name^="act_"]'); if(cb) cb.checked=true;
+          const en=rows[i].querySelector('input[name^="en_"]'); if(en) en.checked=true;
+          rows[i].classList.remove('scenario-disabled');
+          const sw=rows[i].querySelector('.switch'); if(sw) sw.classList.add('on');
+          const sh=rows[i].querySelector('input[name^="sh_"]'); if(sh) sh.value="";
+          const eh=rows[i].querySelector('input[name^="eh_"]'); if(eh) eh.value="";
+          updateScenarioOrder();
+          return;
+        }
+      }
+      showModal('حداکثر ظرفیت مجاز (۲۰ سناریو) را اضافه کرده‌اید.');
+    }
+
+    function removeScenario(index){
+      const row = document.getElementById('row_'+index);
+      if(row){
+        row.style.display='none';
+        const cb=row.querySelector('input[name^="act_"]'); if(cb) cb.checked=false;
+        const en=row.querySelector('input[name^="en_"]'); if(en) en.checked=false;
+        row.classList.remove('scenario-disabled','running','next');
+        const sw=row.querySelector('.switch'); if(sw) sw.classList.remove('on');
+        const sh=row.querySelector('input[name^="sh_"]'); if(sh) sh.value="";
+        const eh=row.querySelector('input[name^="eh_"]'); if(eh) eh.value="";
+        updateScenarioOrder();
+      }
+    }
+
+    function scenarioRowsToData(){
+      const list=[];
+      for(let i=0;i<20;i++){
+        const row=document.getElementById('row_'+i);
+        if(!row || row.style.display==='none') continue;
+        const sh=row.querySelector('input[name^="sh_"]').value, eh=row.querySelector('input[name^="eh_"]').value;
+        if(!sh || !eh) continue;
+        const a=sh.split(':'), b=eh.split(':');
+        const en=row.querySelector('input[name^="en_"]'); const wd=row.querySelector('input[name^="wd_"]');
+        list.push({sh:+a[0],sm:+a[1],eh:+b[0],em:+b[1],en:!en||en.checked,wd:wd?parseInt(wd.value,10):127});
+      }
+      return list;
+    }
+
+    function exportScenarios(){
+      const backup={version:1,type:'esp32-cooler-scenarios',exportedAt:new Date().toISOString(),scenarios:scenarioRowsToData()};
+      const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});
+      const url=URL.createObjectURL(blob), a=document.createElement('a');
+      const now=new Date(); const stamp=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+      a.href=url; a.download='cooler-scenarios-'+stamp+'.json'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      showModal('فایل پشتیبان سناریوها در گوشی شما ذخیره شد.');
+    }
+
+    function importScenarios(event){
+      const file=event.target.files && event.target.files[0]; if(!file) return;
+      const reader=new FileReader();
+      reader.onload=function(){
+        try{
+          const parsed=JSON.parse(reader.result); const data=Array.isArray(parsed)?parsed:parsed.scenarios;
+          if(!Array.isArray(data) || data.length>20) throw new Error('format');
+          for(const x of data){
+            if(!x || !Number.isInteger(x.sh)||!Number.isInteger(x.sm)||!Number.isInteger(x.eh)||!Number.isInteger(x.em)||x.sh<0||x.sh>23||x.eh<0||x.eh>23||x.sm<0||x.sm>59||x.em<0||x.em>59||x.sh===x.eh&&x.sm===x.em) throw new Error('data');
+          }
+          for(let i=0;i<20;i++) removeScenario(i);
+          data.forEach((x,i)=>{
+            const row=document.getElementById('row_'+i); if(!row) return;
+            row.style.display='block'; row.querySelector('input[name^="act_"]').checked=true;
+            const en=row.querySelector('input[name^="en_"]'); en.checked=x.en!==false;
+            const sw=row.querySelector('.switch'); sw.classList.toggle('on',en.checked); row.classList.toggle('scenario-disabled',!en.checked);
+            row.querySelector('input[name^="sh_"]').value=String(x.sh).padStart(2,'0')+':'+String(x.sm).padStart(2,'0');
+            row.querySelector('input[name^="eh_"]').value=String(x.eh).padStart(2,'0')+':'+String(x.em).padStart(2,'0');
+            const wd=row.querySelector('input[name^="wd_"]'); const mask=Number.isInteger(x.wd)&&x.wd>=1&&x.wd<=127?x.wd:127; wd.value=mask;
+            row.querySelectorAll('.day-btn').forEach(btn=>btn.classList.toggle('selected',(mask&(1<<parseInt(btn.dataset.day,10)))!==0));
+          });
+          updateScenarioOrder(); showModal('سناریوها از فایل خوانده شدند. برای اعمال روی برد، دکمه «ذخیره و پیاده‌سازی برنامه‌ها» را بزنید.');
+        }catch(err){ showModal('فایل پشتیبان معتبر نیست یا با این برنامه سازگار نیست.'); }
+        event.target.value='';
+      }; reader.readAsText(file,'UTF-8');
+    }
+
+    function validateForm(event){
+      document.querySelectorAll('.scenario-card').forEach(row=>row.classList.remove('error-conflict'));
+      let activeScenarios=[];
+      for(let i=0;i<20;i++){
+        const row=document.getElementById('row_'+i);
+        if(row && row.style.display!=='none'){
+          const enInput=row.querySelector('input[name^="en_"]');
+          const scenarioEnabled = !enInput || enInput.checked;
+          const sh=row.querySelector('input[name^="sh_"]').value;
+          const eh=row.querySelector('input[name^="eh_"]').value;
+          const hasStart=(sh!=="");
+          const hasEnd=(eh!=="");
+          if((hasStart&&!hasEnd)||(!hasStart&&hasEnd)||(!hasStart&&!hasEnd)){
+            row.classList.add('error-conflict');
+            showModal('لطفاً هر دو کادر زمان روشن شدن و خاموش شدن را در تمام سناریوها به دقت پر کنید.');
+            if(event) event.preventDefault(); return false;
+          }
+          if(hasStart&&hasEnd){
+            let sp=sh.split(':'), ep=eh.split(':');
+            if(sp.length===2&&ep.length===2){
+              let startMin=parseInt(sp[0])*60+parseInt(sp[1]);
+              let endMin=parseInt(ep[0])*60+parseInt(ep[1]);
+              if(startMin===endMin){
+                row.classList.add('error-conflict');
+                showModal('در یکی از سناریوها زمان روشن و خاموش شدن یکسان است. این کار مجاز نیست.');
+                if(event) event.preventDefault(); return false;
+              }
+              if(scenarioEnabled) activeScenarios.push({start:startMin,end:endMin,id:i});
+            }
+          }
+        }
+      }
+      let timeMap=new Array(1440).fill(null);
+      let conflictedIds=new Set();
+      for(let s of activeScenarios){
+        let st=s.start, en=s.end, mins=[];
+        if(st<en){ for(let m=st;m<en;m++) mins.push(m); }
+        else { for(let m=st;m<1440;m++) mins.push(m); for(let m=0;m<en;m++) mins.push(m); }
+        for(let m of mins){
+          if(timeMap[m]!==null){ conflictedIds.add(s.id); conflictedIds.add(timeMap[m]); }
+          else timeMap[m]=s.id;
+        }
+      }
+      if(conflictedIds.size>0){
+        conflictedIds.forEach(id=>{ const r=document.getElementById('row_'+id); if(r) r.classList.add('error-conflict'); });
+        showModal('تداخل زمانی! بازه‌های سناریوها روی هم افتاده‌اند. لطفا زمان سناریوهای مشخص شده با کادر قرمز رنگ را اصلاح کنید.');
+        if(event) event.preventDefault(); return false;
+      }
+      return true;
+    }
+
+    let lastActivity=Date.now();
+    let currentInterval=1000;
+    let pingTimeoutId=null;
+    let waitingWifiReboot=false, wifiWasDisconnected=false;
+    let lastStaState=null; 
+    let initialConfigLoaded=false;
+
+    function resetActivity(){
+      lastActivity=Date.now();
+      if(currentInterval!==1000){ currentInterval=1000; if(pingTimeoutId) clearTimeout(pingTimeoutId); fetchStatus(); }
+    }
+    ['click','touchstart','input','change','scroll'].forEach(evt=>document.addEventListener(evt,resetActivity,{passive:true}));
+
+    function saveApForm(event){
+      event.preventDefault();
+      const form=event.target;
+      const passInput=form.querySelector('input[name="pass"]');
+      if(passInput && passInput.value.length<8){
+        showModal('رمز شبکه (AP) خود برد باید حداقل ۸ کاراکتر باشد.');
+        return false;
+      }
+      const modal=document.getElementById('progress-modal');
+      const overlay=document.getElementById('custom-alert-overlay');
+      const fill=document.getElementById('progress-bar-fill');
+      const pct=document.getElementById('progress-percent');
+      const title=document.getElementById('progress-title');
+      const text=document.getElementById('progress-text');
+      title.innerText='در حال ذخیره تنظیمات فرستنده...';
+      text.innerText='تنظیمات ذخیره شد و برد در حال راه‌اندازی مجدد است. لطفاً منتظر بمانید؛ برنامه به‌صورت خودکار دوباره متصل می‌شود.';
+      fill.style.width='100%'; pct.innerText='100%';
+      overlay.style.display='block'; modal.style.display='block';
+      waitingWifiReboot=true; wifiWasDisconnected=false;
+      switchTab('home');
+      const fd=new FormData(form);
+      apiFetch('/save-ap',{method:'POST', body:fd})
+        .then(r=>{ if(!r.ok) throw new Error('bad'); return r.text(); })
+        .then(()=>{ })
+        .catch(()=>{ waitingWifiReboot=false; wifiWasDisconnected=false; if(modal) modal.style.display='none'; if(overlay) overlay.style.display='none'; showModal('خطا در ذخیره تنظیمات فرستنده! لطفاً دوباره تلاش کنید.'); });
+      return false;
+    }
+
+    function saveStaForm(event){
+      event.preventDefault();
+      const form=event.target;
+      const passInput=form.querySelector('input[name="sta_pass"]');
+      if(passInput && passInput.value.length>0 && passInput.value.length<8){
+        showModal('رمز وای‌فای مودم اگر وارد شود باید حداقل ۸ کاراکتر باشد.');
+        return false;
+      }
+      const onInput=form.querySelector('input[name="sta_on_minutes"]');
+      const offInput=form.querySelector('input[name="sta_off_minutes"]');
+      const onVal=onInput?Number(onInput.value):NaN;
+      const offVal=offInput?Number(offInput.value):NaN;
+      if(!Number.isInteger(onVal) || onVal<1 || onVal>1440 || !Number.isInteger(offVal) || offVal<0 || offVal>1440){
+        showModal('زمان روشن بودن STA باید عدد صحیح بین ۱ تا ۱۴۴۰ و زمان خاموش بودن عدد صحیح بین ۰ تا ۱۴۴۰ دقیقه باشد.');
+        return false;
+      }
+      const statusEl=document.getElementById('sta-status-inline');
+      const cycleEl=document.getElementById('sta-cycle-status-inline');
+      const internetModeEl=document.getElementById('internet-mode-inline');
+      if(statusEl) statusEl.innerText='در حال ذخیره و اعمال اتصال مودم...';
+      if(cycleEl) cycleEl.innerText='در حال ذخیره...';
+      if(internetModeEl) internetModeEl.innerText='در حال ذخیره...';
+      const fd=new FormData(form);
+      const internetEnabled=document.getElementById('internet-enabled');
+      fd.set('internet', (internetEnabled && internetEnabled.checked) ? '1' : '0');
+      apiFetch('/save-sta',{method:'POST', body:fd})
+        .then(r=>{ if(!r.ok) throw new Error('bad'); return r.text(); })
+        .then(()=>{ showModal('تنظیمات مودم / اینترنت ذخیره شد. چرخه اتصال STA با مقادیر جدید از نو شروع شد.'); resetActivity(); fetchStatus(); })
+        .catch(()=>{ if(statusEl) statusEl.innerText='خطا'; if(cycleEl) cycleEl.innerText='خطا'; if(internetModeEl) internetModeEl.innerText='خطا'; showModal('خطا در ذخیره تنظیمات مودم / اینترنت! لطفاً دوباره تلاش کنید.'); });
+      return false;
+    }
+
+    function saveProtectionForm(event){
+      event.preventDefault(); const form=event.target; const input=form.querySelector('input[name="min_off"]');
+      const value=input ? Number(input.value) : NaN;
+      if(!Number.isInteger(value) || value<0 || value>1440){ showModal('زمان محافظت باید یک عدد صحیح بین ۰ تا ۱۴۴۰ دقیقه باشد.'); return false; }
+      apiFetch('/save-protection',{method:'POST',body:new FormData(form)})
+        .then(r=>{if(!r.ok) throw new Error('bad'); return r.text();})
+        .then(()=>{showModal('تنظیمات محافظت کمپرسور ذخیره شد.'); fetchStatus();})
+        .catch(()=>showModal('خطا در ذخیره تنظیمات محافظت!'));
+      return false;
+    }
+
+    function saveApCycleForm(event){
+      event.preventDefault();
+      const form=event.target;
+      const onInput=form.querySelector('input[name="on_minutes"]');
+      const offInput=form.querySelector('input[name="off_minutes"]');
+      const onVal=onInput?Number(onInput.value):NaN;
+      const offVal=offInput?Number(offInput.value):NaN;
+      if(!Number.isInteger(onVal) || onVal<1 || onVal>1440 || !Number.isInteger(offVal) || offVal<1 || offVal>1440){
+        showModal('مدت روشن و خاموش بودن هرکدام باید عددی صحیح بین ۱ تا ۱۴۴۰ دقیقه باشد.');
+        return false;
+      }
+      const cycleEnabled=document.getElementById('ap-cycle-enabled');
+      const fd=new FormData(form);
+      fd.set('cycle_enabled', (cycleEnabled && cycleEnabled.checked) ? '1' : '0');
+      apiFetch('/save-ap-cycle',{method:'POST', body:fd})
+        .then(r=>{ if(!r.ok) throw new Error('bad'); return r.text(); })
+        .then(()=>{ showModal('تنظیمات چرخه AP ذخیره شد.'); fetchStatus(); })
+        .catch(()=>showModal('خطا در ذخیره تنظیمات چرخه AP! لطفاً دوباره تلاش کنید.'));
+      return false;
+    }
+
+    function saveScenariosForm(event){
+      event.preventDefault();
+      if(!validateForm(event)) return false;
+      const modal=document.getElementById('progress-modal');
+      const overlay=document.getElementById('custom-alert-overlay');
+      const fill=document.getElementById('progress-bar-fill');
+      const pct=document.getElementById('progress-percent');
+      const title=document.getElementById('progress-title');
+      const text=document.getElementById('progress-text');
+      title.innerText="در حال ذخیره سناریوها...";
+      text.innerText="لطفاً منتظر بمانید، اطلاعات به طور امن روی حافظه بورد نوشته می‌شود.";
+      fill.style.width='0%'; pct.innerText='0%';
+      overlay.style.display='block'; modal.style.display='block';
+      let val=0;
+      let intId=setInterval(()=>{ if(val<90){ val+=Math.floor(Math.random()*8)+4; if(val>90) val=90; fill.style.width=val+'%'; pct.innerText=val+'%'; } },120);
+      let valid=[];
+      for(let i=0;i<20;i++){
+        const row=document.getElementById('row_'+i);
+        if(row && row.style.display!=='none'){
+          const enInput=row.querySelector('input[name^="en_"]');
+          const enabled=!enInput||enInput.checked;
+          const shVal=row.querySelector('input[name^="sh_"]').value;
+          const ehVal=row.querySelector('input[name^="eh_"]').value;
+          if(shVal&&ehVal){
+            let sp=shVal.split(':'), ep=ehVal.split(':');
+            if(sp.length===2&&ep.length===2){
+              let sh=parseInt(sp[0],10), sm=parseInt(sp[1],10), eh=parseInt(ep[0],10), em=parseInt(ep[1],10);
+              if(sh!==eh||sm!==em){ const wdInput=row.querySelector('input[name^="wd_"]'); let wd=wdInput ? parseInt(wdInput.value,10) : 127; if(isNaN(wd)||wd<1||wd>127) wd=127; valid.push({sh:sh,sm:sm,eh:eh,em:em,en:enabled,wd:wd}); }
+            }
+          }
+        }
+      }
+      valid.sort((a,b)=>(a.sh*60+a.sm)-(b.sh*60+b.sm));
+      apiFetch('/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(valid)})
+        .then(r=>{ clearInterval(intId); fill.style.width='100%'; pct.innerText='100%'; title.innerText="ذخیره‌سازی موفقیت‌آمیز بود ✅"; text.innerText="برنامه‌ریزی جدید سناریوها بدون قطع ارتباط روی بورد ثبت شد."; setTimeout(()=>{ modal.style.display='none'; overlay.style.display='none'; resetActivity(); fetchStatus(); updateScenarioOrder(); },1600); })
+        .catch(err=>{ clearInterval(intId); modal.style.display='none'; overlay.style.display='none'; showModal('خطا در برقراری ارتباط با برد!'); resetActivity(); });
+      return false;
+    }
+
+    function highlightScenarios(boardTimeStr, currentWeekday){
+      if(!boardTimeStr || boardTimeStr==='--:--:--') return;
+      let parts=boardTimeStr.split(':');
+      if(parts.length<2) return;
+      let cur=parseInt(parts[0])*60+parseInt(parts[1]);
+      let cards=document.querySelectorAll('.scenario-card');
+      cards.forEach(c=>{
+        c.classList.remove('running','next');
+        const nm=c.querySelector('.scenario-name');
+        if(nm){ const old=nm.querySelector('.badge-live,.badge-next'); if(old) old.remove(); }
+      });
+      let data=[];
+      cards.forEach(c=>{
+        if(c.style.display!=='none' && !c.classList.contains('scenario-disabled')){
+          let sh=c.querySelector('input[name^="sh_"]'), eh=c.querySelector('input[name^="eh_"]');
+          if(sh&&eh&&sh.value&&eh.value&&!c.classList.contains('error-conflict')){
+            let sp=sh.value.split(':'), ep=eh.value.split(':');
+            if(sp.length===2&&ep.length===2){ let s=parseInt(sp[0])*60+parseInt(sp[1]); let e=parseInt(ep[0])*60+parseInt(ep[1]); if(s!==e){ const wdInput=c.querySelector('input[name^="wd_"]'); let wd=wdInput ? parseInt(wdInput.value,10) : 127; if(isNaN(wd)) wd=127; data.push({card:c,s:s,e:e,wd:wd}); } }
+          }
+        }
+      });
+      let anyRunning=false, next=null, minDiff=Infinity;
+      data.forEach(d=>{
+        let running = d.s<d.e ? (cur>=d.s&&cur<d.e) : (cur>=d.s||cur<d.e);
+        let scenarioDay=(d.s>d.e && cur<d.e) ? ((currentWeekday+6)%7) : currentWeekday;
+        running = running && ((d.wd & (1<<scenarioDay))!==0);
+        if(running){ d.card.classList.add('running'); anyRunning=true; const nm=d.card.querySelector('.scenario-name'); const b=document.createElement('span'); b.className='badge-live'; b.textContent='در حال اجرا'; nm.appendChild(b); }
+        else { let diff=d.s-cur; if(diff<0) diff+=1440; if(diff<minDiff){ minDiff=diff; next=d; } }
+      });
+      if(!anyRunning && next){ next.card.classList.add('next'); const nm=next.card.querySelector('.scenario-name'); const b=document.createElement('span'); b.className='badge-next'; b.textContent='بعدی'; nm.appendChild(b); }
+    }
+
+    function showToast(msg, kind){
+      const wrap = document.getElementById('toast-wrap');
+      if(!wrap) return;
+      const el = document.createElement('div');
+      el.className = 'toast toast-' + kind;
+      el.innerText = msg;
+      wrap.appendChild(el);
+      requestAnimationFrame(()=>el.classList.add('show'));
+      setTimeout(()=>{
+        el.classList.remove('show');
+        setTimeout(()=>el.remove(), 300);
+      }, 3800);
+    }
+
+    function gregorianToJalali(gy, gm, gd){
+      const gdm=[0,31,59,90,120,151,181,212,243,273,304,334];
+      let gy2=(gm>2)?gy+1:gy;
+      let days=355666+365*gy+Math.floor((gy2+3)/4)-Math.floor((gy2+99)/100)+Math.floor((gy2+399)/400)+gd+gdm[gm-1];
+      let jy=-1595+33*Math.floor(days/12053); days%=12053;
+      jy+=4*Math.floor(days/1461); days%=1461;
+      if(days>365){ jy+=Math.floor((days-1)/365); days=(days-1)%365; }
+      let jm, jd;
+      if(days<186){ jm=1+Math.floor(days/31); jd=1+(days%31); }
+      else { jm=7+Math.floor((days-186)/30); jd=1+((days-186)%30); }
+      return [jy,jm,jd];
+    }
+    function formatJalaliDate(gy,gm,gd){
+      const j=gregorianToJalali(gy,gm,gd);
+      const fa=new Intl.NumberFormat('fa-IR',{useGrouping:false});
+      return fa.format(j[0])+'/'+fa.format(j[1]).padStart(2,'۰')+'/'+fa.format(j[2]).padStart(2,'۰');
+    }
+
+    function formatDuration(totalSeconds){
+      if(totalSeconds==null || totalSeconds<0) return '--';
+      const days = Math.floor(totalSeconds / 86400);
+      const hours = Math.floor((totalSeconds % 86400) / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      if(days > 0) return days + ' روز و ' + hours + ' ساعت';
+      if(hours > 0) return hours + ' ساعت و ' + minutes + ' دقیقه';
+      if(minutes > 0) return minutes + ' دقیقه';
+      return totalSeconds + ' ثانیه';
+    }
+
+    function pad2(n){ return String(n).padStart(2,'0'); }
+
+    function formatNtpSuccessStamp(data){
+      if(!data || data.ntpLastValid!==1) return 'هنوز دریافت نشده';
+      const j=gregorianToJalali(data.ntpYear, data.ntpMonth, data.ntpDay);
+      return j[0]+'/'+pad2(j[1])+'/'+pad2(j[2])+' - '+pad2(data.ntpHour)+':'+pad2(data.ntpMinute)+':'+pad2(data.ntpSecond);
+    }
+
+    function fetchStatus(){
+      if(document.hidden){ if(pingTimeoutId) clearTimeout(pingTimeoutId); pingTimeoutId=setTimeout(fetchStatus,currentInterval); return; }
+      let reqStart=Date.now();
+      const controller=new AbortController();
+      const timeoutId=setTimeout(()=>controller.abort(),2500);
+      apiFetch('/status?t='+reqStart,{signal:controller.signal})
+        .then(r=>{ clearTimeout(timeoutId); return r.json(); })
+        .then(data=>{
+          let ping=Date.now()-reqStart;
+          let badge=document.getElementById('connection-status');
+          badge.className='conn-badge connected';
+          badge.innerHTML='<span class="dot"></span> متصل · '+ping+'ms';
+          document.getElementById('board-time').innerText=data.time;
+          const dayNames=['شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه','پنجشنبه','جمعه'];
+          const dateEl=document.getElementById('board-date');
+          if(dateEl && data.year!=null) dateEl.innerText='امروز: '+dayNames[data.weekday]+' — '+formatJalaliDate(data.year,data.month,data.day)+'';
+
+          if(waitingWifiReboot && wifiWasDisconnected){
+            waitingWifiReboot=false; wifiWasDisconnected=false;
+            const _m=document.getElementById('progress-modal'); const _o=document.getElementById('custom-alert-overlay');
+            if(_m) _m.style.display='none'; if(_o) _o.style.display='none';
+          }
+
+          if(!initialConfigLoaded && data){
+            initialConfigLoaded=true;
+            if(data.ssid && document.querySelector('input[name="ssid"]')) document.querySelector('input[name="ssid"]').value = data.ssid;
+            if(data.staSsid && document.querySelector('input[name="sta_ssid"]')) document.querySelector('input[name="sta_ssid"]').value = data.staSsid;
+            if(data.staOnMinutes && document.querySelector('input[name="sta_on_minutes"]')) document.querySelector('input[name="sta_on_minutes"]').value = data.staOnMinutes;
+            if(data.staOffMinutes!==undefined && document.querySelector('input[name="sta_off_minutes"]')) document.querySelector('input[name="sta_off_minutes"]').value = data.staOffMinutes;
+            if(data.apOnMinutes && document.querySelector('input[name="on_minutes"]')) document.querySelector('input[name="on_minutes"]').value = data.apOnMinutes;
+            if(data.apOffMinutes && document.querySelector('input[name="off_minutes"]')) document.querySelector('input[name="off_minutes"]').value = data.apOffMinutes;
+            if(data.apTxPowerLevel!==undefined) selectTxPower(data.apTxPowerLevel);
+            if(data.protectionMinutes!==undefined && document.querySelector('input[name="min_off"]')) document.querySelector('input[name="min_off"]').value = data.protectionMinutes;
+            if(data.internetEnabled!==undefined){
+              const cb=document.getElementById('internet-enabled'), sw=document.getElementById('internet-switch');
+              if(cb&&sw){ cb.checked=(data.internetEnabled===1); sw.classList.toggle('on',cb.checked); }
+            }
+            if(data.apCycleEnabled!==undefined){
+              const cb=document.getElementById('ap-cycle-enabled'), sw=document.getElementById('ap-cycle-switch');
+              if(cb&&sw){ cb.checked=(data.apCycleEnabled===1); sw.classList.toggle('on',cb.checked); }
+            }
+            loadScenariosFromBoard();
+          }
+
+          let hero=document.getElementById('cooler-display-status');
+          let statusText=document.getElementById('cooler-status-text');
+          let statusSub=document.getElementById('cooler-status-sub');
+          let scenariosTabBtn=document.getElementById('tab-btn-scenarios');
+          let syncWarning=document.getElementById('sync-warning');
+          let manualBtn=document.getElementById('manual-btn');
+          let internetWifiStatus=document.getElementById('internet-wifi-status');
+
+          const staState = data.staState;
+          let staText, staClass;
+          if(data.internetEnabled!==1){ staText='غیرفعال چون اینترنت خاموش است'; staClass='status-connecting'; }
+          else if(data.staConfigured!==1){ staText='تنظیم نشده'; staClass='status-connecting'; }
+          else if(staState===4){ staText='طبق زمان‌بندی موقتاً قطع است'; staClass='status-connecting'; }
+          else if(staState===2){ staText='متصل - '+data.staIp; staClass='status-connected'; }
+          else if(staState===3){ staText='⚠️ قطع شده - در حال تلاش مجدد...'; staClass='status-disconnected'; }
+          else if(staState===1){ staText='در حال اتصال...'; staClass='status-connecting'; }
+          else { staText='در حال بررسی...'; staClass='status-connecting'; }
+
+          let staCycleText, staCycleClass;
+          if(data.internetEnabled!==1){
+            staCycleText='غیرفعال';
+            staCycleClass='status-connecting';
+          } else if(data.staConfigured!==1){
+            staCycleText='تا قبل از وارد کردن SSID مودم فعال نمی‌شود';
+            staCycleClass='status-connecting';
+          } else if(data.staOffMinutes===0){
+            staCycleText='دائم روشن (زمان خاموشی = ۰)';
+            staCycleClass='status-connected';
+          } else if(data.staPhaseOn===1){
+            staCycleText='روشن — '+Math.ceil(data.staRemaining/60)+' دقیقه تا قطع دوره‌ای';
+            staCycleClass='status-connected';
+          } else {
+            staCycleText='خاموش — '+Math.ceil(data.staRemaining/60)+' دقیقه تا وصل مجدد';
+            staCycleClass='status-connecting';
+          }
+
+          let internetModeText, internetModeClass;
+          if(data.internetEnabled===1){
+            if(data.staConfigured!==1){ internetModeText='فعال است، اما مودم تنظیم نشده'; internetModeClass='status-connecting'; }
+            else if(data.staOffMinutes===0){ internetModeText='فعال — اتصال مودم دائماً روشن است'; internetModeClass='status-connected'; }
+            else { internetModeText='فعال — طبق زمان‌بندی STA'; internetModeClass='status-connected'; }
+          } else {
+            internetModeText='غیرفعال';
+            internetModeClass='status-connecting';
+          }
+
+          if(internetWifiStatus){ internetWifiStatus.textContent=staText; internetWifiStatus.className=staClass; }
+          const staCycleHome=document.getElementById('sta-cycle-status');
+          if(staCycleHome){ staCycleHome.textContent=staCycleText; staCycleHome.className=staCycleClass; }
+          const internetModeHome=document.getElementById('internet-mode-status');
+          if(internetModeHome){ internetModeHome.textContent=internetModeText; internetModeHome.className=internetModeClass; }
+          const staInline=document.getElementById('sta-status-inline');
+          if(staInline){ staInline.textContent=staText; staInline.className=staClass; }
+          const staCycleInline=document.getElementById('sta-cycle-status-inline');
+          if(staCycleInline){ staCycleInline.textContent=staCycleText; staCycleInline.className=staCycleClass; }
+          const internetModeInline=document.getElementById('internet-mode-inline');
+          if(internetModeInline){ internetModeInline.textContent=internetModeText; internetModeInline.className=internetModeClass; }
+
+          if(lastStaState!==null && lastStaState!==staState && data.internetEnabled===1 && data.staConfigured===1){
+            if(staState===3){ showToast('⚠️ اتصال STA به مودم اینترنت قطع شد', 'bad'); }
+            else if(staState===2 && lastStaState===3){ showToast('✅ اتصال STA به مودم دوباره برقرار شد', 'good'); }
+            else if(staState===2 && lastStaState===1){ showToast('✅ اتصال STA به مودم برقرار شد', 'good'); }
+          }
+          lastStaState=staState;
+
+          const apCycleEl=document.getElementById('ap-cycle-status');
+          if(apCycleEl){
+            if(!data.apCycleEnabled){ apCycleEl.textContent='غیرفعال — فرستنده همیشه روشن است'; apCycleEl.style.color='var(--text-dim)'; }
+            else if(data.apOn && data.apClientConnected){ apCycleEl.textContent='روشن — دستگاهی متصل است، چرخه متوقف مانده'; apCycleEl.style.color='var(--scenario-live)'; }
+            else if(data.apOn){ apCycleEl.textContent='روشن — '+Math.ceil(data.apRemaining/60)+' دقیقه تا خاموش‌شدن'; apCycleEl.style.color='var(--scenario-live)'; }
+            else { apCycleEl.textContent='در حال خاموش بودن طبق چرخه'; apCycleEl.style.color='var(--warn)'; }
+          }
+
+          const protectionEl=document.getElementById('protection-status');
+          if(protectionEl){
+            if(data.protectionRemaining>0){ protectionEl.textContent='فعال — '+Math.ceil(data.protectionRemaining/60)+' دقیقه تا اجازه روشن‌شدن'; protectionEl.style.color='var(--warn)'; }
+            else if(data.protectionMinutes>0){ protectionEl.textContent='فعال — فاصله تنظیم‌شده: '+data.protectionMinutes+' دقیقه'; protectionEl.style.color='var(--scenario-live)'; }
+            else { protectionEl.textContent='غیرفعال'; protectionEl.style.color='var(--text-dim)'; }
+          }
+
+          const ntpStampText=formatNtpSuccessStamp(data);
+          const ntpColor = data.ntpLastValid===1 ? 'var(--scenario-live)' : 'var(--warn)';
+          const ntpHome=document.getElementById('ntp-last-update');
+          if(ntpHome){ ntpHome.innerText=ntpStampText; ntpHome.style.color=ntpColor; }
+          const ntpInline=document.getElementById('ntp-last-update-inline');
+          if(ntpInline){ ntpInline.innerText=ntpStampText; ntpInline.style.color=ntpColor; }
+
+          const switchCountEl=document.getElementById('relay-switch-count');
+          if(switchCountEl && data.switchCount!=null) switchCountEl.innerText=data.switchCount+' بار';
+          const onDurationEl=document.getElementById('relay-on-duration');
+          if(onDurationEl && data.onSeconds!=null) onDurationEl.innerText=formatDuration(data.onSeconds);
+
+          if(data.sync===1){ syncWarning.innerText='ساعت همگام‌سازی شده و سناریوها فعال هستند.'; syncWarning.style.color='var(--on)'; }
+          else { syncWarning.innerText='⚠️ ساعت برد همگام نیست! سناریوها تا زمان همگام‌سازی اجرا نخواهند شد.'; syncWarning.style.color='var(--off)'; }
+
+          if(data.relay===1){ hero.className='panel hero rivets on'; statusText.innerText='کولر روشن است'; }
+          else { hero.className='panel hero rivets off'; statusText.innerText='کولر خاموش است'; }
+
+          if(statusSub) statusSub.innerText = data.protectionRemaining>0 ? 'محافظت کمپرسور: '+Math.ceil(data.protectionRemaining/60)+' دقیقه تا روشن‌شدن' : (data.override===1 ? 'حالت: دستی (روشن)' : 'حالت: خودکار (سناریو)');
+
+          if(manualBtn){
+            if(data.override===1 && manualBtn.classList.contains('isoff')){ manualBtn.classList.remove('isoff'); manualBtn.innerText='خاموش کردن دستی کولر'; }
+            else if(data.override===0 && !manualBtn.classList.contains('isoff')){ manualBtn.classList.add('isoff'); manualBtn.innerText='روشن کردن دستی کولر'; }
+          }
+
+          const manualNote=document.getElementById('manual-disabled-note');
+          if(manualNote) manualNote.style.display = (data.override===1) ? 'block' : 'none';
+
+          if(data.sync===1 && data.override===0) highlightScenarios(data.time, data.weekday);
+          else document.querySelectorAll('.scenario-card').forEach(r=>{ r.classList.remove('running','next'); const nm=r.querySelector('.scenario-name'); if(nm){ const old=nm.querySelector('.badge-live,.badge-next'); if(old) old.remove(); } });
+
+          queueNextPing();
+        })
+        .catch(err=>{
+          let badge=document.getElementById('connection-status');
+          badge.className='conn-badge disconnected';
+          if(waitingWifiReboot) wifiWasDisconnected=true;
+          badge.innerHTML='<span class="dot"></span> قطع ارتباط!';
+          let hero=document.getElementById('cooler-display-status');
+          let statusText=document.getElementById('cooler-status-text');
+          if(hero) hero.className='panel hero rivets disconnected';
+          if(statusText) statusText.innerText='ارتباط با برد قطع شده است';
+          document.querySelectorAll('.scenario-card').forEach(r=>{ r.classList.remove('running','next'); const nm=r.querySelector('.scenario-name'); if(nm){ const old=nm.querySelector('.badge-live,.badge-next'); if(old) old.remove(); } });
+          queueNextPing();
+        });
+    }
+
+    function queueNextPing(){
+      if(pingTimeoutId) clearTimeout(pingTimeoutId);
+      let since=Date.now()-lastActivity;
+      currentInterval = since>30000 ? 3000 : 1000;
+      pingTimeoutId=setTimeout(fetchStatus,currentInterval);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      initScenarioCards();
+      fetchStatus();
+    });
+
+    document.addEventListener('visibilitychange',()=>{ if(!document.hidden) resetActivity(); });
+  </script>
+</body>
+</html>
