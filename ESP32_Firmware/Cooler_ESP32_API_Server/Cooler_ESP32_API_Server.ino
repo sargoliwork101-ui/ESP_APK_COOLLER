@@ -66,6 +66,7 @@ unsigned long relaySwitchCount = 0, relayTotalOnSeconds = 0, relayOnSinceMillis 
 bool relayCurrentlyOnForStats = false;
 int lastRelayStatState = -1;
 const char* RELAY_STAT_FILES[2] = {"/relaystat0.txt", "/relaystat1.txt"};
+const char* NTP_META_FILE = "/ntp.json";
 int relayStatFileSlot = 0;
 unsigned long relayStatSaveSeq = 0, lastRelayStatSaveMillis = 0;
 
