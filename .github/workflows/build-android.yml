@@ -1,10 +1,10 @@
-name: Build Android APK (Local WebView / Capacitor App)
+name: Build Android APK (Capacitor App)
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "**" ]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "**" ]
   workflow_dispatch:
 
 jobs:
@@ -27,28 +27,37 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Install Dependencies & Sync Capacitor
-        working-directory: ./Android_App
+      - name: Find App Directory & Install / Sync Capacitor
         run: |
+          if [ -d "Android_App" ] && [ -f "Android_App/package.json" ]; then
+            echo "APP_DIR=Android_App" >> $GITHUB_ENV
+            cd Android_App
+          elif [ -f "package.json" ]; then
+            echo "APP_DIR=." >> $GITHUB_ENV
+          else
+            echo "Could not find package.json!" && exit 1
+          fi
           npm install
           npx cap sync android
 
       - name: Grant Execute Permission for Gradlew
-        working-directory: ./Android_App/android
-        run: chmod +x gradlew
+        run: |
+          cd ${{ env.APP_DIR }}/android
+          chmod +x gradlew
 
       - name: Build Android APK (Debug & Release)
-        working-directory: ./Android_App/android
-        run: ./gradlew assembleDebug assembleRelease
+        run: |
+          cd ${{ env.APP_DIR }}/android
+          ./gradlew assembleDebug assembleRelease
 
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Smart-Cooler-ESP32-App-Debug
-          path: Android_App/android/app/build/outputs/apk/debug/*.apk
+          path: ${{ env.APP_DIR }}/android/app/build/outputs/apk/debug/*.apk
 
       - name: Upload Release (Unsigned) APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Smart-Cooler-ESP32-App-Release
-          path: Android_App/android/app/build/outputs/apk/release/*.apk
+          path: ${{ env.APP_DIR }}/android/app/build/outputs/apk/release/*.apk
