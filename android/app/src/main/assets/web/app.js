@@ -75,19 +75,36 @@ function saveEspIpAndReconnect(){
   if(!v){ showModal('لطفاً آدرس IP برد را وارد کنید.'); return; }
   saveEspIp(v);
   updateIpDisplay();
+  closeIpModal();
   lastStaState = null;
   resetActivity();
   fetchStatus();
   showToast('آدرس برد ذخیره شد و در حال اتصال...', 'info');
 }
 function updateIpDisplay(){
-  const el = document.getElementById('current-ip-display');
+  const el = document.getElementById('ip-current');
   if(el) el.innerText = 'آدرس ذخیره‌شده: ' + ESP_IP;
   const inp = document.getElementById('esp-ip');
   if(inp && !inp.value) inp.value = ESP_IP;
 }
 
+function openIpModal(){
+  updateIpDisplay();
+  const m=document.getElementById('ip-modal');
+  const o=document.getElementById('custom-alert-overlay');
+  if(m) m.style.display='block';
+  if(o){ o.style.display='block'; o.onclick=closeIpModal; }
+}
+function closeIpModal(){
+  const m=document.getElementById('ip-modal');
+  const o=document.getElementById('custom-alert-overlay');
+  if(m) m.style.display='none';
+  if(o){ o.style.display='none'; o.onclick=closeAlert; }
+}
+
 // ========== Initialize scenario rows (empty slots up to 20) ==========
+// دقیقاً همان HTML که در handleRoot() به ازای هر سناریو در حلقه تولید می‌شود،
+// اما در حالت پیش‌فرض همه display:none / scenario-disabled هستند (چون active=false).
 const MAX_SCENARIOS = 20;
 function buildScenarioCards(){
   const list = document.getElementById('scenarios-list');
@@ -95,6 +112,8 @@ function buildScenarioCards(){
   list.innerHTML = '';
   const dayNames = ['ش','ی','د','س','چ','پ','ج'];
   for(let i=0;i<MAX_SCENARIOS;i++){
+    // در C++ در حالت غیرفعال، shStr/ehStr خالی هستند و displayStyle='display:none;'
+    // checked=''  enabledChecked=''  switchClass='switch'  cardClass='scenario-card scenario-disabled'
     const card = document.createElement('div');
     card.className = 'scenario-card scenario-disabled';
     card.id = 'row_'+i;
@@ -113,12 +132,15 @@ function buildScenarioCards(){
       </div>
       <div class='days-label'>روزهای اجرا</div>
       <div class='days-row'>
-        ${dayNames.map((d,day)=>`<button type='button' class='day-btn' data-day='${day}' onclick='toggleScenarioDay(${i},${day})'>${d}</button>`).join('')}
+        ${dayNames.map((dn,day)=>`<button type='button' class='day-btn' data-day='${day}' onclick='toggleScenarioDay(${i},${day})'>${dn}</button>`).join('')}
       </div>
       <input type='hidden' name='wd_${i}' value='127'>
       <input type='checkbox' name='act_${i}' value='1' style='display:none;'>
       <input type='checkbox' name='en_${i}' value='1' style='display:none;'>
     `;
+    // توجه: در حالت اولیه (inactive) روزها selected نیستند — درست مثل خروجی C++ که
+    // day-btn ها بدون کلاس selected هستند. وقتی سناریو add می‌شود یا از برد خوانده
+    // می‌شود، روزها بر اساس wd مقداردهی می‌شوند.
     list.appendChild(card);
   }
 }
