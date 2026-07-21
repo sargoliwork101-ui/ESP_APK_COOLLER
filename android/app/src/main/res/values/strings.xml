@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Smart Cooler</string>
+    <string name="title_activity_main">Smart Cooler</string>
+    <string name="package_name">com.cooler.app</string>
+    <string name="custom_url_scheme">com.cooler.app</string>
+</resources>
