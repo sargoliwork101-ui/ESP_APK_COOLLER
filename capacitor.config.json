@@ -1,8 +1,0 @@
-{
-  "appId": "com.cooler.espapp",
-  "appName": "کولر هوشمند ESP32",
-  "webDir": "www",
-  "server": {
-    "androidScheme": "http"
-  }
-}

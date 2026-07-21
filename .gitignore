@@ -1,3 +1,13 @@
-node_modules/
-android/
+# Android build
+android/.gradle/
+android/local.properties
+android/**/build/
+android/*.iml
+android/**/*.iml
+android/.idea/
+android/captures/
+*.apk
+*.aab
+*.keystore
+*~
 .DS_Store

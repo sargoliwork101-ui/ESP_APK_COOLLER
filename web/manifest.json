@@ -1,0 +1,26 @@
+{
+  "name": "کولر هوشمند ESP32",
+  "short_name": "کولر ESP32",
+  "description": "کنترل پنل کولر هوشمند مبتنی بر ESP32 (نسخه PWA)",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0a0c0d",
+  "theme_color": "#0a0c0d",
+  "lang": "fa",
+  "dir": "rtl",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
