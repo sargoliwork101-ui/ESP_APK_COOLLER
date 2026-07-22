@@ -20,6 +20,13 @@
       --warn:#f2a93b; --warn-dim:rgba(242,169,59,.14); --cyan:#29d3c8; --on-cyan:#04201d;
       --scenario-live:#3ddc84; --scenario-live-dim:rgba(61,220,132,.14); --scenario-next:#f5d020; --scenario-next-dim:rgba(245,208,32,.16);
       --text:#eef0f1; --text-dim:#868c90; --text-faint:#585c5f; --nav-bg:rgba(15,18,19,.92); --panel-radius:14px; --btn-radius:12px;
+      
+      /* Consistent icon and button colors */
+      --icon-color: var(--text-dim);
+      --icon-active: var(--accent);
+      --font-weight-normal: 400;
+      --font-weight-medium: 600;
+      --font-weight-bold: 700;
     }
     *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
     body{margin:0; background:#000; color:var(--text); font-family:var(--font-fa); display:flex; flex-direction:column; align-items:center;}
@@ -151,8 +158,9 @@
 
     /* ===== نوار پایینی نویگیشن ===== */
     .nav-orbit{position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:540px; background:var(--nav-bg); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); border-top:1px solid var(--line); display:flex; justify-content:space-around; padding:8px 16px; z-index:50;}
-    .nav-btn{background:transparent; border:none; color:var(--text-dim); display:flex; flex-direction:column; align-items:center; gap:4px; padding:6px 16px; font-family:var(--font-fa); font-size:.72rem; font-weight:600; cursor:pointer; transition:color .25s; position:relative;}
-    .nav-btn svg{width:22px; height:22px; stroke-width:1.8;}
+    .nav-btn{background:transparent; border:none; color:var(--text-dim); display:flex; flex-direction:column; align-items:center; gap:4px; padding:6px 16px; font-family:var(--font-fa); font-size:.72rem; font-weight:var(--font-weight-medium); cursor:pointer; transition:color .25s; position:relative;}
+    .nav-btn svg{width:22px; height:22px; stroke-width:1.8; color: var(--icon-color); transition: color 0.2s ease;}
+.nav-btn.active svg{color: var(--icon-active);}
     .nav-btn.active{color:var(--accent);}
     .nav-btn.active::before{content:''; position:absolute; top:0; width:20px; height:3px; background:var(--accent); border-radius:0 0 4px 4px;}
 
@@ -603,11 +611,44 @@
     }
 
     function switchTab(tabId){
-      document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-      document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
-      if(tabId==='home'){ document.getElementById('tab-btn-home').classList.add('active'); document.getElementById('tab-home').classList.add('active'); }
-      else if(tabId==='scenarios'){ document.getElementById('tab-btn-scenarios').classList.add('active'); document.getElementById('tab-scenarios').classList.add('active'); updateScenarioOrder(); }
-      else if(tabId==='wifi'){ document.getElementById('tab-btn-wifi').classList.add('active'); document.getElementById('tab-wifi').classList.add('active'); }
+      const pages = document.querySelectorAll('.page');
+      const navBtns = document.querySelectorAll('.nav-btn');
+      
+      // Remove active from all
+      pages.forEach(p => p.classList.remove('active'));
+      navBtns.forEach(b => b.classList.remove('active'));
+
+      let newPage = null;
+
+      if(tabId==='home'){
+        document.getElementById('tab-btn-home').classList.add('active');
+        newPage = document.getElementById('tab-home');
+      }
+      else if(tabId==='scenarios'){
+        document.getElementById('tab-btn-scenarios').classList.add('active');
+        newPage = document.getElementById('tab-scenarios');
+        updateScenarioOrder();
+      }
+      else if(tabId==='wifi'){
+        document.getElementById('tab-btn-wifi').classList.add('active');
+        newPage = document.getElementById('tab-wifi');
+      }
+
+      if(newPage){
+        // Add animation
+        newPage.style.transition = 'none';
+        newPage.style.opacity = '0';
+        newPage.style.transform = 'translateX(30px)';
+        
+        newPage.classList.add('active');
+        
+        // Trigger animation
+        setTimeout(() => {
+          newPage.style.transition = 'all 0.25s ease';
+          newPage.style.opacity = '1';
+          newPage.style.transform = 'translateX(0)';
+        }, 10);
+      }
     }
 
     // جابه‌جایی لمسی بین تب‌ها
@@ -626,7 +667,10 @@
       const active=document.querySelector('.page.active');
       const current=active ? active.id.replace('tab-','') : 'home';
       const index=pageOrder.indexOf(current);
-      const next=dx<0 ? index+1 : index-1;
+      
+      // RTL friendly: swipe left → previous tab, swipe right → next tab
+      const next = dx < 0 ? index - 1 : index + 1;
+      
       if(next>=0 && next<pageOrder.length) switchTab(pageOrder[next]);
     },{passive:true});
 
