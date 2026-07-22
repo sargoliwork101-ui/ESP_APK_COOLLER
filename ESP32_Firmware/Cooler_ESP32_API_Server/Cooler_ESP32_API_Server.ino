@@ -763,13 +763,9 @@ void handleSaveScenario() {
     return;
   }
 
-  String body = "";
+  String body = server.hasArg("plain") ? server.arg("plain") : "";
   
-  // Try multiple ways to read the body (more robust)
-  if (server.hasArg("plain")) {
-    body = server.arg("plain");
-  } else if (server.arg("plain").length() == 0 && server.method() == HTTP_POST) {
-    // Fallback: read raw body
+  if (body.length() == 0 && server.arg(0).length() > 0) {
     body = server.arg(0);
   }
   
@@ -792,18 +788,16 @@ void handleSyncTime() {
   sendCORSHeaders();
   if (!allowRequest(lastSyncRequest, 1000UL)) return;
 
-  String decrypted = decryptFromNetwork(server.arg("plain"));
-  if (decrypted.length() == 0) {
-    server.send(400, "text/plain", "Decryption Failed");
-    return;
+  // Support both encrypted and plain form data
+  String body = server.hasArg("plain") ? server.arg("plain") : "";
+
+  if (body.length() > 0) {
+    String decrypted = decryptFromNetwork(body);
+    if (decrypted.length() > 0) {
+      body = decrypted;
+    }
   }
 
-  // Expect format: h=xx&m=xx&s=xx&y=xxxx&mon=xx&d=xx&wd=x
-  // For simplicity, we still accept form-style inside encrypted payload
-  int h = decrypted.indexOf("h=");
-  // ... (simple parsing can be added here if needed)
-  
-  // For now we keep original logic but accept encrypted body
   if (server.hasArg("h") && server.hasArg("y")) {
     currentHour = server.arg("h").toInt();
     currentMinute = server.arg("m").toInt();
