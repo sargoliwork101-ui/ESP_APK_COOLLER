@@ -26,7 +26,7 @@ const uint8_t ENCRYPTION_KEY[32] = {
 /* Simple XOR encryption */
 void xorEncrypt(uint8_t* data, size_t len) {
   for (size_t i = 0; i < len; i++) {
-    data[i] ^= ENCRYPTION_KEY[i % 16];
+    data[i] ^= ENCRYPTION_KEY[i % 32];   // Fixed: use full 32-byte key
   }
 }
 
