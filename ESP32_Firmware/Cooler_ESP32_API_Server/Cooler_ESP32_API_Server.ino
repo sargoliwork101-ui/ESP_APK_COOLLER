@@ -758,19 +758,33 @@ void handleGetScenarios() {
 
 void handleSaveScenario() {
   sendCORSHeaders();
-  if (!allowRequest(lastSaveScenarioRequest, 1000UL) || !server.hasArg("plain")) {
+  if (!allowRequest(lastSaveScenarioRequest, 1000UL)) {
     server.send(400, "text/plain", "Bad Request");
     return;
   }
+
+  String body = "";
   
-  // Decrypt incoming data then save encrypted
-  String decrypted = decryptFromNetwork(server.arg("plain"));
+  // Try multiple ways to read the body (more robust)
+  if (server.hasArg("plain")) {
+    body = server.arg("plain");
+  } else if (server.arg("plain").length() == 0 && server.method() == HTTP_POST) {
+    // Fallback: read raw body
+    body = server.arg(0);
+  }
+  
+  if (body.length() == 0) {
+    server.send(400, "text/plain", encryptForNetwork("No Body"));
+    return;
+  }
+
+  String decrypted = decryptFromNetwork(body);
   if (decrypted.length() > 0) {
     saveEncryptedFile("/scenarios.json", decrypted);
     loadScenarios();
-    server.send(200, "text/plain", "OK");
+    server.send(200, "text/plain", encryptForNetwork("OK"));
   } else {
-    server.send(400, "text/plain", "Decryption Failed");
+    server.send(400, "text/plain", encryptForNetwork("Decryption Failed"));
   }
 }
 
