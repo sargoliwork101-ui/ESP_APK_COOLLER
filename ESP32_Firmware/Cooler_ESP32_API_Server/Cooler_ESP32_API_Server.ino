@@ -898,8 +898,68 @@ void handleToggleManual() {
   server.send(200, "text/plain", encryptForNetwork("OK"));
 }
 
-/* Other handlers remain unchanged for brevity (save-ap, save-sta, etc.) */
-/* ... (same as before) ... */
+/* ===================== ALL OTHER HANDLERS (ENCRYPTED RESPONSES) ===================== */
+
+void handleSaveAP() {
+  sendCORSHeaders();
+  if (!allowRequest(lastSaveApRequest, 3000UL) || !server.hasArg("ssid") || !server.hasArg("pass")) {
+    server.send(400, "text/plain", encryptForNetwork("Bad Request"));
+    return;
+  }
+  server.arg("ssid").toCharArray(custom_ssid, 32);
+  server.arg("pass").toCharArray(custom_password, 32);
+  saveWiFiSettings();
+  server.send(200, "text/plain", encryptForNetwork("OK"));
+  pendingReset = true;
+  resetMillis = millis();
+}
+
+void handleSaveSTA() {
+  sendCORSHeaders();
+  if (!allowRequest(lastSaveStaRequest, 1500UL)) {
+    server.send(400, "text/plain", encryptForNetwork("Bad Request"));
+    return;
+  }
+  if (server.hasArg("sta_ssid")) server.arg("sta_ssid").toCharArray(sta_ssid, 32);
+  if (server.hasArg("sta_pass")) server.arg("sta_pass").toCharArray(sta_password, 64);
+  internet_enabled = (server.arg("internet") == "1");
+  staOnMinutes = constrain(server.arg("sta_on_minutes").toInt(), 1, 1440);
+  staOffMinutes = constrain(server.arg("sta_off_minutes").toInt(), 0, 1440);
+  saveWiFiSettings();
+  ntp_synced_this_boot = false;
+  ntpFirstCheckPending = true;
+  staEverConnectedThisBoot = false;
+  setStaConnectionState(true);
+  server.send(200, "text/plain", encryptForNetwork("OK"));
+}
+
+void handleSaveProtection() {
+  sendCORSHeaders();
+  if (!allowRequest(lastSaveProtectionRequest, 1000UL) || !server.hasArg("min_off")) {
+    server.send(400, "text/plain", encryptForNetwork("Bad Request"));
+    return;
+  }
+  antiShortCycleMinutes = constrain(server.arg("min_off").toInt(), 0, 1440);
+  saveProtectionSettings();
+  server.send(200, "text/plain", encryptForNetwork("OK"));
+}
+
+void handleSaveApCycle() {
+  sendCORSHeaders();
+  if (!allowRequest(lastSaveApCycleRequest, 1000UL)) {
+    server.send(400, "text/plain", encryptForNetwork("Bad Request"));
+    return;
+  }
+  apCycleEnabled = (server.arg("cycle_enabled") == "1");
+  apOnMinutes = constrain(server.arg("on_minutes").toInt(), 1, 1440);
+  apOffMinutes = constrain(server.arg("off_minutes").toInt(), 1, 1440);
+  apTxPowerLevel = constrain(server.arg("tx_power").toInt(), 0, 3);
+  applyApTxPower();
+  apCycleLastToggleMillis = millis();
+  if (!apCurrentlyOn) setApRadioState(true);
+  saveWiFiSettings();
+  server.send(200, "text/plain", encryptForNetwork("OK"));
+}
 
 void setup() {
   Serial.begin(115200);
@@ -952,7 +1012,10 @@ void setup() {
   server.on("/sync", HTTP_POST, handleSyncTime);
   server.on("/status", HTTP_GET, handleGetStatus);
   server.on("/toggle-manual", HTTP_POST, handleToggleManual);
-  /* ... other routes ... */
+  server.on("/save-ap", HTTP_POST, handleSaveAP);
+  server.on("/save-sta", HTTP_POST, handleSaveSTA);
+  server.on("/save-protection", HTTP_POST, handleSaveProtection);
+  server.on("/save-ap-cycle", HTTP_POST, handleSaveApCycle);
 
   server.onNotFound([]() {
     if (server.method() == HTTP_OPTIONS) handleOptions();
