@@ -9,9 +9,119 @@
  * - All constants use const/constexpr
  * - Explicit types used throughout
  * - JSON format for time & relay stats (Option A)
+ * - Simple XOR + Base64 encryption for saved data (Option 2)
  * - Detailed comments for debugging
  * - Matches logic of the sent index.html exactly
  * ================================================================ */
+
+/* ===================== SIMPLE ENCRYPTION (XOR + Base64) ===================== */
+/* Fixed 16-byte key - change this for your project */
+const uint8_t ENCRYPTION_KEY[16] = {
+  0x4B, 0x7E, 0xA3, 0x19, 0xC2, 0x5D, 0xF8, 0x66,
+  0x31, 0x9A, 0xE4, 0x7B, 0x0F, 0xD2, 0x58, 0xC9
+};
+
+/* Simple XOR encryption */
+void xorEncrypt(uint8_t* data, size_t len) {
+  for (size_t i = 0; i < len; i++) {
+    data[i] ^= ENCRYPTION_KEY[i % 16];
+  }
+}
+
+/* Base64 encoding table */
+static const char b64_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/* Encode to Base64 */
+String base64Encode(const uint8_t* data, size_t len) {
+  String result;
+  result.reserve(((len + 2) / 3) * 4);
+  
+  for (size_t i = 0; i < len; i += 3) {
+    uint32_t n = (uint32_t)data[i] << 16;
+    if (i + 1 < len) n |= (uint32_t)data[i + 1] << 8;
+    if (i + 2 < len) n |= data[i + 2];
+    
+    result += b64_table[(n >> 18) & 0x3F];
+    result += b64_table[(n >> 12) & 0x3F];
+    result += (i + 1 < len) ? b64_table[(n >> 6) & 0x3F] : '=';
+    result += (i + 2 < len) ? b64_table[n & 0x3F] : '=';
+  }
+  return result;
+}
+
+/* Decode Base64 */
+bool base64Decode(const String& input, uint8_t* output, size_t& outLen) {
+  size_t len = input.length();
+  if (len % 4 != 0) return false;
+  
+  outLen = (len / 4) * 3;
+  if (input[len - 1] == '=') outLen--;
+  if (input[len - 2] == '=') outLen--;
+  
+  size_t j = 0;
+  for (size_t i = 0; i < len; i += 4) {
+    uint32_t n = 0;
+    for (int k = 0; k < 4; k++) {
+      char c = input[i + k];
+      if (c == '=') break;
+      int val = strchr(b64_table, c) - b64_table;
+      if (val < 0) return false;
+      n = (n << 6) | val;
+    }
+    
+    output[j++] = (n >> 16) & 0xFF;
+    if (j < outLen) output[j++] = (n >> 8) & 0xFF;
+    if (j < outLen) output[j++] = n & 0xFF;
+  }
+  return true;
+}
+
+/* Encrypt JSON string and save to file */
+bool saveEncryptedFile(const char* path, const String& jsonContent) {
+  size_t len = jsonContent.length();
+  uint8_t* buffer = (uint8_t*)malloc(len);
+  if (!buffer) return false;
+  
+  memcpy(buffer, jsonContent.c_str(), len);
+  xorEncrypt(buffer, len);
+  
+  String encoded = base64Encode(buffer, len);
+  free(buffer);
+  
+  File f = LittleFS.open(path, "w");
+  if (!f) return false;
+  
+  f.print(encoded);
+  f.close();
+  return true;
+}
+
+/* Load and decrypt file */
+bool loadEncryptedFile(const char* path, String& jsonContent) {
+  if (!LittleFS.exists(path)) return false;
+  
+  File f = LittleFS.open(path, "r");
+  if (!f) return false;
+  
+  String encoded = f.readString();
+  f.close();
+  
+  size_t decodedLen = (encoded.length() / 4) * 3;
+  uint8_t* buffer = (uint8_t*)malloc(decodedLen + 4);
+  if (!buffer) return false;
+  
+  size_t actualLen = 0;
+  if (!base64Decode(encoded, buffer, actualLen)) {
+    free(buffer);
+    return false;
+  }
+  
+  xorEncrypt(buffer, actualLen);
+  
+  jsonContent = String((char*)buffer, actualLen);
+  free(buffer);
+  return true;
+}
 
 /* ===================== HARDWARE & PROGRAM SETTINGS ===================== */
 const char* PROGRAM_NAME = "کولر هوشمند ESP32";
@@ -284,12 +394,11 @@ void tryNtpSync() {
 
 /* Scenarios */
 void loadScenarios() {
-  if (!LittleFS.exists("/scenarios.json")) return;
-  File f = LittleFS.open("/scenarios.json", "r");
-  if (!f) return;
+  String json;
+  if (!loadEncryptedFile("/scenarios.json", json)) return;
+
   DynamicJsonDocument doc(4096);
-  DeserializationError err = deserializeJson(doc, f);
-  f.close();
+  DeserializationError err = deserializeJson(doc, json);
   if (err) return;
 
   JsonArray array = doc.is<JsonArray>() ? doc.as<JsonArray>() : doc["items"].as<JsonArray>();
@@ -309,11 +418,11 @@ void loadScenarios() {
 
 /* WiFi Settings */
 void loadWiFiSettings() {
-  if (!LittleFS.exists("/wifi.json")) return;
-  File f = LittleFS.open("/wifi.json", "r");
-  if (!f) return;
+  String json;
+  if (!loadEncryptedFile("/wifi.json", json)) return;
+
   StaticJsonDocument<512> doc;
-  if (!deserializeJson(doc, f)) {
+  if (!deserializeJson(doc, json)) {
     if (doc.containsKey("ssid")) strncpy(custom_ssid, doc["ssid"], 31);
     if (doc.containsKey("pass")) strncpy(custom_password, doc["pass"], 31);
     if (doc.containsKey("sta_ssid")) strncpy(sta_ssid, doc["sta_ssid"], 31);
@@ -326,7 +435,6 @@ void loadWiFiSettings() {
     apOffMinutes = constrain(doc["apOffMinutes"] | apOffMinutes, 1, 1440);
     apTxPowerLevel = constrain(doc["apTxPowerLevel"] | apTxPowerLevel, 0, 3);
   }
-  f.close();
 }
 
 void saveWiFiSettings() {
@@ -343,11 +451,9 @@ void saveWiFiSettings() {
   doc["apOffMinutes"] = apOffMinutes;
   doc["apTxPowerLevel"] = apTxPowerLevel;
 
-  File f = LittleFS.open("/wifi.json", "w");
-  if (f) {
-    serializeJson(doc, f);
-    f.close();
-  }
+  String json;
+  serializeJson(doc, json);
+  saveEncryptedFile("/wifi.json", json);   // Encrypted save
 }
 
 /* Override Setting (simple integer) */
@@ -410,25 +516,22 @@ void saveTimeSetting() {
   doc["day"] = currentDay;
   doc["weekday"] = currentWeekday;
 
-  File f = LittleFS.open(TIME_FILE, "w");
-  if (f) {
-    serializeJson(doc, f);
-    f.close();
-  }
+  String json;
+  serializeJson(doc, json);
+  saveEncryptedFile(TIME_FILE, json);   // Encrypted save
   lastTimeSaveMillis = millis();
 }
 
 void loadTimeSetting() {
-  if (!LittleFS.exists(TIME_FILE)) {
+  String json;
+  if (!loadEncryptedFile(TIME_FILE, json)) {
     currentHour = 0; currentMinute = 0; currentSecond = 0;
     time_synchronized = false;
     return;
   }
-  File f = LittleFS.open(TIME_FILE, "r");
-  if (!f) return;
 
   StaticJsonDocument<256> doc;
-  if (!deserializeJson(doc, f)) {
+  if (!deserializeJson(doc, json)) {
     currentHour = doc["hour"] | 0;
     currentMinute = doc["minute"] | 0;
     currentSecond = doc["second"] | 0;
@@ -439,7 +542,6 @@ void loadTimeSetting() {
     currentDay = doc["day"] | 1;
     currentWeekday = doc["weekday"] | 3;
   }
-  f.close();
 }
 
 void saveRelayStats() {
@@ -449,39 +551,35 @@ void saveRelayStats() {
   doc["onSeconds"] = relayTotalOnSeconds;
   doc["seq"] = relayStatSaveSeq;
 
-  File f = LittleFS.open(RELAY_STAT_FILE, "w");
-  if (f) {
-    serializeJson(doc, f);
-    f.close();
-  }
+  String json;
+  serializeJson(doc, json);
+  saveEncryptedFile(RELAY_STAT_FILE, json);   // Encrypted save
   lastRelayStatSaveMillis = millis();
 }
 
 void loadRelayStats() {
-  if (!LittleFS.exists(RELAY_STAT_FILE)) {
+  String json;
+  if (!loadEncryptedFile(RELAY_STAT_FILE, json)) {
     relaySwitchCount = 0;
     relayTotalOnSeconds = 0;
     return;
   }
-  File f = LittleFS.open(RELAY_STAT_FILE, "r");
-  if (!f) return;
 
   StaticJsonDocument<128> doc;
-  if (!deserializeJson(doc, f)) {
+  if (!deserializeJson(doc, json)) {
     relaySwitchCount = doc["switchCount"] | 0;
     relayTotalOnSeconds = doc["onSeconds"] | 0;
     relayStatSaveSeq = doc["seq"] | 0;
   }
-  f.close();
 }
 
 /* NTP Success Info (unchanged) */
 void loadNtpSuccessInfo() {
-  if (!LittleFS.exists(NTP_META_FILE)) return;
-  File f = LittleFS.open(NTP_META_FILE, "r");
-  if (!f) return;
+  String json;
+  if (!loadEncryptedFile(NTP_META_FILE, json)) return;
+
   StaticJsonDocument<192> doc;
-  if (!deserializeJson(doc, f)) {
+  if (!deserializeJson(doc, json)) {
     ntpLastSuccessYear = doc["y"] | 2026;
     ntpLastSuccessMonth = doc["mon"] | 1;
     ntpLastSuccessDay = doc["d"] | 1;
@@ -491,7 +589,6 @@ void loadNtpSuccessInfo() {
     ntpLastSuccessValid = true;
     ntpEverSucceeded = true;
   }
-  f.close();
 }
 
 void saveNtpSuccessInfo() {
@@ -504,11 +601,9 @@ void saveNtpSuccessInfo() {
   doc["m"] = ntpLastSuccessMinute;
   doc["s"] = ntpLastSuccessSecond;
 
-  File f = LittleFS.open(NTP_META_FILE, "w");
-  if (f) {
-    serializeJson(doc, f);
-    f.close();
-  }
+  String json;
+  serializeJson(doc, json);
+  saveEncryptedFile(NTP_META_FILE, json);   // Encrypted save
 }
 
 /* ===================== CORE LOGIC ===================== */
@@ -633,15 +728,11 @@ void handleSaveScenario() {
     server.send(400, "text/plain", "Bad Request");
     return;
   }
-  File f = LittleFS.open("/scenarios.json", "w");
-  if (f) {
-    f.print(server.arg("plain"));
-    f.close();
-    loadScenarios();
-    server.send(200, "text/plain", "OK");
-  } else {
-    server.send(500, "text/plain", "FS Error");
-  }
+  
+  // Encrypt and save scenarios
+  saveEncryptedFile("/scenarios.json", server.arg("plain"));
+  loadScenarios();
+  server.send(200, "text/plain", "OK");
 }
 
 void handleSyncTime() {
