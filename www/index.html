@@ -1001,7 +1001,7 @@
       valid.sort((a,b)=>(a.sh*60+a.sm)-(b.sh*60+b.sm));
       
       const encryptedBody = encryptForNetworkClient(JSON.stringify(valid));
-      apiFetch('/save',{method:'POST',headers:{'Content-Type':'application/json'},body:encryptedBody})
+      apiFetch('/save',{method:'POST',headers:{'Content-Type':'text/plain'},body:encryptedBody})
         .then(r=>{ clearInterval(intId); fill.style.width='100%'; pct.innerText='100%'; title.innerText="ذخیره‌سازی موفقیت‌آمیز بود ✅"; text.innerText="برنامه‌ریزی جدید سناریوها بدون قطع ارتباط روی بورد ثبت شد."; setTimeout(()=>{ modal.style.display='none'; overlay.style.display='none'; resetActivity(); fetchStatus(); updateScenarioOrder(); },1600); })
         .catch(err=>{ clearInterval(intId); modal.style.display='none'; overlay.style.display='none'; showModal('خطا در برقراری ارتباط با برد!'); resetActivity(); });
       return false;
