@@ -201,7 +201,7 @@ void loadOverrideSetting() {
   if (!LittleFS.exists("/override.txt")) { manual_override = 0; return; }
   File f = LittleFS.open("/override.txt", "r"); if (f) { String val = f.readString(); manual_override = (val.startsWith("V") ? val.substring(val.indexOf(':') + 1).toInt() : val.toInt()) == 1 ? 1 : 0; f.close(); }
 }
-void saveOverrideSetting() { File f = LittleFS.open("/override.txt", "w"); if (f) { f.printf("V2:%d", manual_override); f.close(); } }
+void saveOverrideSetting() { File f = LittleFS.open("/override.txt", "w"); if (f) { f.printf("%d", manual_override); f.close(); } }
 
 void loadProtectionSettings() {
   if (!LittleFS.exists("/protection.json")) return;
