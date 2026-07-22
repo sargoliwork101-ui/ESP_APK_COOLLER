@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>کولر هوشمند - دمو</title>
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --font-fa: 'Vazirmatn', -apple-system, sans-serif;
+      --bg: #0a0c0d;
+      --panel: #1b1f21;
+      --panel-2: #15181a;
+      --line: rgba(255,255,255,.08);
+      --accent: #1de9c4;
+      --accent-dim: rgba(29,233,196,.16);
+      --on-accent: #00201b;
+      --text: #eef0f1;
+      --text-dim: #868c90;
+      --panel-radius: 14px;
+      --btn-radius: 12px;
+    }
+    
+    * { box-sizing: border-box; }
+    
+    body {
+      margin: 0;
+      background: #000;
+      color: var(--text);
+      font-family: var(--font-fa);
+      display: flex;
+      justify-content: center;
+      padding: 20px;
+    }
+    
+    .phone {
+      width: 100%;
+      max-width: 380px;
+      background: var(--bg);
+      border-radius: 40px;
+      overflow: hidden;
+      box-shadow: 0 0 0 12px #111, 0 0 0 20px #222;
+      border: 1px solid #333;
+    }
+    
+    .topbar {
+      padding: 16px 20px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--line);
+    }
+    
+    .brand {
+      font-weight: 800;
+      font-size: 1.1rem;
+    }
+    
+    .pages {
+      height: 620px;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .page {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      padding: 16px;
+      display: none;
+      flex-direction: column;
+      gap: 16px;
+    }
+    
+    .page.active {
+      display: flex;
+    }
+    
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--panel-radius);
+      padding: 18px;
+    }
+    
+    .nav {
+      display: flex;
+      background: #111;
+      padding: 8px;
+    }
+    
+    .nav-btn {
+      flex: 1;
+      text-align: center;
+      padding: 8px;
+      color: var(--text-dim);
+      font-size: 0.75rem;
+      font-weight: 600;
+      border: none;
+      background: none;
+      cursor: pointer;
+    }
+    
+    .nav-btn.active {
+      color: var(--accent);
+    }
+    
+    .status {
+      text-align: center;
+      padding: 40px 20px;
+    }
+    
+    .status-text {
+      font-size: 1.4rem;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+    
+    .btn {
+      background: var(--accent);
+      color: var(--on-accent);
+      border: none;
+      padding: 14px;
+      border-radius: var(--btn-radius);
+      font-weight: 700;
+      font-size: 0.95rem;
+      width: 100%;
+      margin-top: 12px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="phone">
+  <!-- Top Bar -->
+  <div class="topbar">
+    <div class="brand">کولر هوشمند ESP32</div>
+    <div style="font-size:0.75rem; color:#666;">192.168.4.1 • متصل</div>
+  </div>
+
+  <!-- Pages Container -->
+  <div class="pages">
+    
+    <!-- Home Page -->
+    <div id="page-home" class="page active">
+      <div class="panel" style="text-align:center; padding:40px 20px;">
+        <div style="font-size:3rem; margin-bottom:12px;">❄️</div>
+        <div class="status-text" id="cooler-status">کولر خاموش است</div>
+        <div style="color:#888; font-size:0.9rem;">حالت: خودکار (سناریو)</div>
+        
+        <button onclick="toggleCooler()" class="btn" id="manual-btn">
+          روشن کردن دستی
+        </button>
+      </div>
+      
+      <div class="panel">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-size:0.85rem; color:#888;">ساعت برد</div>
+            <div style="font-size:1.6rem; font-weight:800;" id="board-time">14:32:05</div>
+          </div>
+          <button onclick="syncTime()" style="background:#222; color:#1de9c4; border:none; padding:8px 16px; border-radius:8px; font-size:0.8rem;">
+            همگام‌سازی
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scenarios Page -->
+    <div id="page-scenarios" class="page">
+      <div class="panel">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <div style="font-weight:700;">برنامه‌ریزی سناریوها</div>
+          <button onclick="addScenarioDemo()" style="background:var(--accent); color:#00201b; border:none; width:32px; height:32px; border-radius:8px; font-size:1.3rem; line-height:1;">+</button>
+        </div>
+        
+        <div id="scenario-list">
+          <!-- Scenarios will be added here -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Page -->
+    <div id="page-settings" class="page">
+      <div class="panel">
+        <div style="font-weight:700; margin-bottom:12px;">تنظیمات</div>
+        
+        <div style="margin:12px 0;">
+          <div style="font-size:0.85rem; color:#888;">آدرس IP</div>
+          <input type="text" value="192.168.4.1" style="width:100%; background:#222; border:1px solid #333; color:white; padding:10px; border-radius:8px; margin-top:4px;">
+        </div>
+        
+        <button onclick="saveSettingsDemo()" class="btn">ذخیره تنظیمات</button>
+      </div>
+    </div>
+    
+  </div>
+
+  <!-- Bottom Navigation -->
+  <div class="nav">
+    <button class="nav-btn active" onclick="switchTab('home')">خانه</button>
+    <button class="nav-btn" onclick="switchTab('scenarios')">سناریوها</button>
+    <button class="nav-btn" onclick="switchTab('settings')">تنظیمات</button>
+  </div>
+</div>
+
+<script>
+// Simple demo logic
+let coolerOn = false;
+
+function switchTab(tab) {
+  // Hide all pages
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  
+  // Show selected page
+  document.getElementById('page-' + tab).classList.add('active');
+  
+  // Update nav
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+}
+
+function toggleCooler() {
+  coolerOn = !coolerOn;
+  const status = document.getElementById('cooler-status');
+  const btn = document.getElementById('manual-btn');
+  
+  if (coolerOn) {
+    status.innerText = 'کولر روشن است';
+    btn.innerText = 'خاموش کردن دستی';
+    btn.style.background = '#ff5468';
+    btn.style.color = 'white';
+  } else {
+    status.innerText = 'کولر خاموش است';
+    btn.innerText = 'روشن کردن دستی';
+    btn.style.background = '#1de9c4';
+    btn.style.color = '#00201b';
+  }
+}
+
+function syncTime() {
+  const timeEl = document.getElementById('board-time');
+  timeEl.innerText = new Date().toLocaleTimeString('fa-IR');
+  alert('ساعت با موفقیت همگام‌سازی شد');
+}
+
+function addScenarioDemo() {
+  const container = document.getElementById('scenario-list');
+  const div = document.createElement('div');
+  div.style.cssText = 'background:#222; padding:12px; border-radius:10px; margin-bottom:8px;';
+  div.innerHTML = `
+    <div style="display:flex; justify-content:space-between;">
+      <div>سناریو جدید</div>
+      <div style="color:#1de9c4;">فعال</div>
+    </div>
+    <div style="font-size:0.85rem; color:#888; margin-top:4px;">08:00 - 18:00</div>
+  `;
+  container.appendChild(div);
+}
+
+function saveSettingsDemo() {
+  alert('تنظیمات با موفقیت ذخیره شد');
+}
+
+// Initial demo scenario
+setTimeout(() => {
+  const container = document.getElementById('scenario-list');
+  if (container.children.length === 0) {
+    const div = document.createElement('div');
+    div.style.cssText = 'background:#222; padding:12px; border-radius:10px; margin-bottom:8px;';
+    div.innerHTML = `
+      <div style="display:flex; justify-content:space-between;">
+        <div>سناریو ۱</div>
+        <div style="color:#3ddc84;">در حال اجرا</div>
+      </div>
+      <div style="font-size:0.85rem; color:#888; margin-top:4px;">08:00 - 22:00</div>
+    `;
+    container.appendChild(div);
+  }
+}, 800);
+
+// Auto update time
+setInterval(() => {
+  const timeEl = document.getElementById('board-time');
+  if (timeEl) {
+    const d = new Date();
+    timeEl.innerText = d.toLocaleTimeString('fa-IR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  }
+}, 1000);
+</script>
+
+</body>
+</html>
