@@ -456,7 +456,7 @@ void loadWiFiSettings() {
   if (!loadEncryptedFile("/wifi.json", json)) return;
 
   StaticJsonDocument<512> doc;
-  if (!deserializeJson(doc, json)) {
+  if (deserializeJson(doc, json)) {
     if (doc.containsKey("ssid")) strncpy(custom_ssid, doc["ssid"], 31);
     if (doc.containsKey("pass")) strncpy(custom_password, doc["pass"], 31);
     if (doc.containsKey("sta_ssid")) strncpy(sta_ssid, doc["sta_ssid"], 31);
@@ -518,7 +518,7 @@ void loadProtectionSettings() {
   File f = LittleFS.open("/protection.json", "r");
   if (f) {
     StaticJsonDocument<128> doc;
-    if (!deserializeJson(doc, f)) {
+    if (deserializeJson(doc, f)) {
       antiShortCycleMinutes = constrain(doc["minOffMinutes"] | 3, 0, 1440);
     }
     f.close();
@@ -565,7 +565,7 @@ void loadTimeSetting() {
   }
 
   StaticJsonDocument<256> doc;
-  if (!deserializeJson(doc, json)) {
+  if (deserializeJson(doc, json)) {
     currentHour = doc["hour"] | 0;
     currentMinute = doc["minute"] | 0;
     currentSecond = doc["second"] | 0;
@@ -600,7 +600,7 @@ void loadRelayStats() {
   }
 
   StaticJsonDocument<128> doc;
-  if (!deserializeJson(doc, json)) {
+  if (deserializeJson(doc, json)) {
     relaySwitchCount = doc["switchCount"] | 0;
     relayTotalOnSeconds = doc["onSeconds"] | 0;
     relayStatSaveSeq = doc["seq"] | 0;
@@ -613,7 +613,7 @@ void loadNtpSuccessInfo() {
   if (!loadEncryptedFile(NTP_META_FILE, json)) return;
 
   StaticJsonDocument<192> doc;
-  if (!deserializeJson(doc, json)) {
+  if (deserializeJson(doc, json)) {
     ntpLastSuccessYear = doc["y"] | 2026;
     ntpLastSuccessMonth = doc["mon"] | 1;
     ntpLastSuccessDay = doc["d"] | 1;
