@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>کولر NVS V2.3</title>
+  <title>کولر NVS V2.4</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -460,6 +460,8 @@
     // ===================== مدیریت BASE_URL جهت اتصال به برد ESP32 =====================
     let BASE_URL = localStorage.getItem('esp32_base_url') || 'http://192.168.4.1';
     let boardFirmwareCompatible = false;
+    let lastConfigRetryAt = 0;
+    let statusRequestInFlight = false;
 
     function openIpModal() {
       const input = document.getElementById('ip-input-field');
@@ -490,12 +492,13 @@
         showModal('آدرس IP برد به‌روزرسانی شد: ' + BASE_URL);
         initialConfigLoaded = false;
         resetActivity();
-        loadConfigFromBoard().catch(err => {
-        console.log('Board configuration unavailable:', err);
-        if(err && err.message === 'firmware_outdated') showModal('فریمور نصب‌شده روی برد قدیمی است؛ فریمور API نسخه ۳ را روی ESP32 آپلود کنید.');
-      });
+        loadConfigFromBoard()
+          .then(()=>loadScenariosFromBoard())
+          .catch(err => {
+            console.log('Board configuration unavailable:', err);
+            if(err && err.message === 'firmware_outdated') showModal('فریمور نصب‌شده روی برد قدیمی است؛ فریمور API نسخه ۴ را روی ESP32 آپلود کنید.');
+          });
         fetchStatus();
-        loadScenariosFromBoard();
       }
     }
 
@@ -508,7 +511,12 @@
     }
 
     function apiFetch(endpoint, options) {
-      return fetch(BASE_URL + endpoint, Object.assign({cache:'no-store'}, options || {}));
+      const requestOptions = Object.assign({cache:'no-store'}, options || {});
+      if (requestOptions.signal) return fetch(BASE_URL + endpoint, requestOptions);
+      const controller = new AbortController();
+      requestOptions.signal = controller.signal;
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      return fetch(BASE_URL + endpoint, requestOptions).finally(() => clearTimeout(timeoutId));
     }
 
     function ensureApiSuccess(response) {
@@ -524,7 +532,7 @@
 
     function saveErrorText(error, fallback) {
       if (error && (error.status === 500 || error.message === 'Storage Error')) {
-        return 'خطا در ذخیره‌سازی حافظه داخلی برد! لطفاً وضعیت LittleFS و فضای فلش را بررسی کنید.';
+        return 'خطا در ذخیره‌سازی حافظه داخلی برد! لطفاً وضعیت NVS و فضای فلش را بررسی کنید.';
       }
       if (error && error.status) return fallback + ' (خطای HTTP ' + error.status + ')';
       return fallback + ' لطفاً اتصال وای‌فای گوشی به برد را بررسی کنید.';
@@ -532,7 +540,7 @@
 
     function requireCompatibleFirmware() {
       if (boardFirmwareCompatible) return true;
-      showModal('نسخه فریمور روی برد قدیمی یا ناسازگار است. ابتدا فریمور API نسخه ۳ با ذخیره‌سازی NVS را روی ESP32 آپلود کنید.');
+      showModal('نسخه فریمور روی برد قدیمی یا ناسازگار است. ابتدا فریمور API نسخه ۴ با ذخیره‌سازی NVS را روی ESP32 آپلود کنید.');
       return false;
     }
 
@@ -540,7 +548,7 @@
       return apiFetch('/config?t=' + Date.now())
         .then(r => { if (!r.ok) throw new Error('config'); return r.json(); })
         .then(data => {
-          boardFirmwareCompatible = data.storageBackend === 'NVS' && Number(data.firmwareApiVersion) >= 3;
+          boardFirmwareCompatible = data.storageBackend === 'NVS' && Number(data.firmwareApiVersion) >= 4;
           if (!boardFirmwareCompatible) {
             const error = new Error('firmware_outdated');
             throw error;
@@ -621,7 +629,7 @@
     }
 
     // ===================== لود سناریوها از روی برد ESP32 =====================
-    function loadScenariosFromBoard() {
+    function loadScenariosFromBoard(silent = true) {
       return apiFetch('/scenarios?t=' + Date.now())
         .then(r => { if (!r.ok) throw new Error('scenarios'); return r.json(); })
         .then(data => {
@@ -659,6 +667,7 @@
         })
         .catch(err => {
           console.log('Scenarios not yet loaded from board or board offline:', err);
+          if (!silent) throw err;
         });
     }
 
@@ -1112,7 +1121,7 @@
 
       apiFetch('/save',{method:'POST',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:JSON.stringify(valid)})
         .then(ensureApiSuccess)
-        .then(()=>loadScenariosFromBoard())
+        .then(()=>loadScenariosFromBoard(false))
         .then(()=>{ clearInterval(intId); fill.style.width='100%'; pct.innerText='100%'; title.innerText="ذخیره‌سازی موفقیت‌آمیز بود ✅"; text.innerText="برنامه‌ریزی جدید روی حافظه بورد ثبت و دوباره از بورد خوانده شد."; setTimeout(()=>{ modal.style.display='none'; overlay.style.display='none'; resetActivity(); fetchStatus(); updateScenarioOrder(); },1600); })
         .catch(err=>{ clearInterval(intId); modal.style.display='none'; overlay.style.display='none'; showModal(saveErrorText(err,'خطا در ذخیره سناریوها روی برد!')); resetActivity(); });
       return false;
@@ -1202,7 +1211,9 @@
     }
 
     function fetchStatus(){
+      if(statusRequestInFlight) return;
       if(document.hidden){ if(pingTimeoutId) clearTimeout(pingTimeoutId); pingTimeoutId=setTimeout(fetchStatus,currentInterval); return; }
+      statusRequestInFlight=true;
       let reqStart=Date.now();
       const controller=new AbortController();
       const timeoutId=setTimeout(()=>controller.abort(),2500);
@@ -1337,9 +1348,16 @@
           if(data.sync===1 && data.override===0) highlightScenarios(data.time, data.weekday);
           else document.querySelectorAll('.scenario-card').forEach(r=>{ r.classList.remove('running','next'); const nm=r.querySelector('.scenario-name'); if(nm){ const old=nm.querySelector('.badge-live,.badge-next'); if(old) old.remove(); } });
 
+          // اگر برنامه پیش از روشن‌شدن برد باز شده بود، پس از اولین اتصال معتبر تنظیمات را دوباره می‌خوانیم.
+          if(!boardFirmwareCompatible && Date.now()-lastConfigRetryAt>5000){
+            lastConfigRetryAt=Date.now();
+            loadConfigFromBoard().then(()=>loadScenariosFromBoard()).catch(()=>{});
+          }
+          statusRequestInFlight=false;
           queueNextPing();
         })
         .catch(err=>{
+          clearTimeout(timeoutId);
           let badge=document.getElementById('connection-status');
           badge.className='conn-badge disconnected';
           if(waitingWifiReboot) wifiWasDisconnected=true;
@@ -1349,6 +1367,7 @@
           if(hero) hero.className='panel hero rivets disconnected';
           if(statusText) statusText.innerText='ارتباط با برد قطع شده است';
           document.querySelectorAll('.scenario-card').forEach(r=>{ r.classList.remove('running','next'); const nm=r.querySelector('.scenario-name'); if(nm){ const old=nm.querySelector('.badge-live,.badge-next'); if(old) old.remove(); } });
+          statusRequestInFlight=false;
           queueNextPing();
         });
     }
@@ -1362,11 +1381,12 @@
 
     document.addEventListener('DOMContentLoaded', () => {
       initScenarioCards();
-      loadConfigFromBoard().catch(err => {
-        console.log('Board configuration unavailable:', err);
-        if(err && err.message === 'firmware_outdated') showModal('فریمور نصب‌شده روی برد قدیمی است؛ فریمور API نسخه ۳ را روی ESP32 آپلود کنید.');
-      });
-      loadScenariosFromBoard();
+      loadConfigFromBoard()
+        .then(()=>loadScenariosFromBoard())
+        .catch(err => {
+          console.log('Board configuration unavailable:', err);
+          if(err && err.message === 'firmware_outdated') showModal('فریمور نصب‌شده روی برد قدیمی است؛ فریمور API نسخه ۴ را روی ESP32 آپلود کنید.');
+        });
       fetchStatus();
     });
 

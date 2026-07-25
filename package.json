@@ -1,10 +1,11 @@
 {
   "name": "smart-cooler-esp32-app",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "نرم‌افزار اندرویدی (Capacitor / Local WebView App) کنترل و مدیریت هوشمند کولر ESP32 بدون نیاز به سرور ابری",
   "main": "www/index.html",
   "scripts": {
     "build": "echo 'No build step required for pure web assets'",
+    "test": "node scripts/validate-project.js",
     "sync": "npx cap sync android",
     "open:android": "npx cap open android",
     "build:android": "cd android && ./gradlew assembleDebug"

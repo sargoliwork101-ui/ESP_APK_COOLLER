@@ -1335,7 +1335,7 @@ void handleOptions() {
 // The UI is bundled in the Android application. ESP32 now serves only small JSON APIs.
 void handleRoot() {
   sendCorsHeaders();
-  server.send(200, "application/json", "{\"status\":\"online\",\"device\":\"ESP32 Cooler\",\"apiVersion\":3,\"storageBackend\":\"NVS\"}");
+  server.send(200, "application/json", "{\"status\":\"online\",\"device\":\"ESP32 Cooler\",\"apiVersion\":4,\"storageBackend\":\"NVS\"}");
 }
 
 void handleGetScenarios() {
@@ -1375,7 +1375,7 @@ void handleGetConfig() {
   doc["apTxPowerLevel"] = apTxPowerLevel;
   doc["protectionMinutes"] = antiShortCycleMinutes;
   doc["storageBackend"] = "NVS";
-  doc["firmwareApiVersion"] = 3;
+  doc["firmwareApiVersion"] = 4;
   String body;
   serializeJson(doc, body);
   sendCorsHeaders();
@@ -1405,18 +1405,36 @@ void handleSaveScenario() {
   }
 
   JsonArray array = doc.as<JsonArray>();
-  Scenario temp[MAX_SCENARIOS];
+  if (array.size() > MAX_SCENARIOS) {
+    server.send(400, "text/plain", "Too Many Scenarios");
+    return;
+  }
 
+  Scenario temp[MAX_SCENARIOS];
   int i = 0;
-  for (JsonObject v : array) {
-    if (i >= MAX_SCENARIOS) break;
+  for (JsonVariant item : array) {
+    if (!item.is<JsonObject>()) {
+      server.send(400, "text/plain", "Invalid Scenario Object");
+      return;
+    }
+    JsonObject v = item.as<JsonObject>();
+    int sh = v["sh"] | -1;
+    int sm = v["sm"] | -1;
+    int eh = v["eh"] | -1;
+    int em = v["em"] | -1;
+    int wd = v.containsKey("wd") ? (int)(v["wd"] | 0) : 0x7F;
+    if (sh < 0 || sh > 23 || eh < 0 || eh > 23 || sm < 0 || sm > 59 || em < 0 || em > 59 ||
+        (sh == eh && sm == em) || wd < 1 || wd > 0x7F) {
+      server.send(400, "text/plain", "Invalid Scenario Range");
+      return;
+    }
     temp[i].active = true;
-    temp[i].enabled = v["en"] | true; // این کلید اجرای سناریو را بدون حذف کردن کنترل می‌کند
-    temp[i].startHour = v["sh"] | 0;
-    temp[i].startMinute = v["sm"] | 0;
-    temp[i].endHour = v["eh"] | 0;
-    temp[i].endMinute = v["em"] | 0;
-    temp[i].weekdays = v.containsKey("wd") ? (uint8_t)(v["wd"] | 0x7F) : 0x7F;
+    temp[i].enabled = v["en"] | true;
+    temp[i].startHour = sh;
+    temp[i].startMinute = sm;
+    temp[i].endHour = eh;
+    temp[i].endMinute = em;
+    temp[i].weekdays = (uint8_t)wd;
     i++;
   }
 
@@ -1479,8 +1497,7 @@ void handleSyncTime() {
 }
 
 void handleGetStatus() {
-  // پنل هر ۱ ثانیه درخواست می‌دهد؛ حد ۲۵۰ms فقط اسپم غیرعادی را رد می‌کند.
-  if (!allowRequest(lastStatusRequest, 150UL)) return;
+  // GET وضعیت بدون rate-limit است؛ درخواست‌های هم‌زمان بی‌خطرند و نباید باعث 429 و قطع کاذب شوند.
   char timeStr[9];
   sprintf(timeStr, "%02d:%02d:%02d", currentHour, currentMinute, currentSecond);
 
