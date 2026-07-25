@@ -1,6 +1,6 @@
 {
   "appId": "com.smartcooler.esp32",
-  "appName": "کولر هوشمند ESP32",
+  "appName": "کولر سبک V2.1",
   "webDir": "www",
   "bundledWebRuntime": false,
   "server": {
