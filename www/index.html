@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>کولر سبک V2.1</title>
+  <title>کولر پایدار V2.2</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -504,7 +504,26 @@
     }
 
     function apiFetch(endpoint, options) {
-      return fetch(BASE_URL + endpoint, options);
+      return fetch(BASE_URL + endpoint, Object.assign({cache:'no-store'}, options || {}));
+    }
+
+    function ensureApiSuccess(response) {
+      return response.text().then(text => {
+        if (!response.ok) {
+          const error = new Error(text || ('HTTP ' + response.status));
+          error.status = response.status;
+          throw error;
+        }
+        return text;
+      });
+    }
+
+    function saveErrorText(error, fallback) {
+      if (error && (error.status === 500 || error.message === 'Storage Error')) {
+        return 'خطا در ذخیره‌سازی حافظه داخلی برد! لطفاً وضعیت LittleFS و فضای فلش را بررسی کنید.';
+      }
+      if (error && error.status) return fallback + ' (خطای HTTP ' + error.status + ')';
+      return fallback + ' لطفاً اتصال وای‌فای گوشی به برد را بررسی کنید.';
     }
 
     function loadConfigFromBoard() {
@@ -588,7 +607,7 @@
 
     // ===================== لود سناریوها از روی برد ESP32 =====================
     function loadScenariosFromBoard() {
-      apiFetch('/scenarios?t=' + Date.now())
+      return apiFetch('/scenarios?t=' + Date.now())
         .then(r => { if (!r.ok) throw new Error('scenarios'); return r.json(); })
         .then(data => {
           if (!Array.isArray(data)) return;
@@ -719,7 +738,7 @@
         btn.innerText = btn.classList.contains('isoff') ? 'روشن کردن دستی کولر' : 'خاموش کردن دستی کولر';
       }
       updateScenariosManualNote();
-      apiFetch('/toggle-manual', {method:'POST'}).then(r=>{ if(!r.ok) throw new Error('toggle'); fetchStatus(); }).catch(()=>{ showModal('خطا در ارسال فرمان به برد!'); fetchStatus(); });
+      apiFetch('/toggle-manual', {method:'POST'}).then(ensureApiSuccess).then(()=>fetchStatus()).catch(err=>{ showModal(saveErrorText(err,'خطا در ارسال فرمان به برد!')); fetchStatus(); });
     }
 
     function toggleScenarioDay(index, day){
@@ -963,9 +982,9 @@
       switchTab('home');
       const fd=new FormData(form);
       apiFetch('/save-ap',{method:'POST', body:fd})
-        .then(r=>{ if(!r.ok) throw new Error('bad'); return r.text(); })
+        .then(ensureApiSuccess)
         .then(()=>{ })
-        .catch(()=>{ waitingWifiReboot=false; wifiWasDisconnected=false; if(modal) modal.style.display='none'; if(overlay) overlay.style.display='none'; showModal('خطا در ذخیره تنظیمات فرستنده! لطفاً دوباره تلاش کنید.'); });
+        .catch(err=>{ waitingWifiReboot=false; wifiWasDisconnected=false; if(modal) modal.style.display='none'; if(overlay) overlay.style.display='none'; showModal(saveErrorText(err,'خطا در ذخیره تنظیمات فرستنده!')); });
       return false;
     }
 
@@ -995,9 +1014,10 @@
       const internetEnabled=document.getElementById('internet-enabled');
       fd.set('internet', (internetEnabled && internetEnabled.checked) ? '1' : '0');
       apiFetch('/save-sta',{method:'POST', body:fd})
-        .then(r=>{ if(!r.ok) throw new Error('bad'); return r.text(); })
-        .then(()=>{ showModal('تنظیمات مودم / اینترنت ذخیره شد. چرخه اتصال STA با مقادیر جدید از نو شروع شد.'); resetActivity(); fetchStatus(); })
-        .catch(()=>{ if(statusEl) statusEl.innerText='خطا'; if(cycleEl) cycleEl.innerText='خطا'; if(internetModeEl) internetModeEl.innerText='خطا'; showModal('خطا در ذخیره تنظیمات مودم / اینترنت! لطفاً دوباره تلاش کنید.'); });
+        .then(ensureApiSuccess)
+        .then(()=>loadConfigFromBoard())
+        .then(()=>{ showModal('تنظیمات مودم / اینترنت روی حافظه برد ذخیره و دوباره خوانده شد.'); resetActivity(); fetchStatus(); })
+        .catch(err=>{ if(statusEl) statusEl.innerText='خطا'; if(cycleEl) cycleEl.innerText='خطا'; if(internetModeEl) internetModeEl.innerText='خطا'; showModal(saveErrorText(err,'خطا در ذخیره تنظیمات مودم / اینترنت!')); });
       return false;
     }
 
@@ -1006,9 +1026,10 @@
       const value=input ? Number(input.value) : NaN;
       if(!Number.isInteger(value) || value<0 || value>1440){ showModal('زمان محافظت باید یک عدد صحیح بین ۰ تا ۱۴۴۰ دقیقه باشد.'); return false; }
       apiFetch('/save-protection',{method:'POST',body:new FormData(form)})
-        .then(r=>{if(!r.ok) throw new Error('bad'); return r.text();})
-        .then(()=>{showModal('تنظیمات محافظت کمپرسور ذخیره شد.'); fetchStatus();})
-        .catch(()=>showModal('خطا در ذخیره تنظیمات محافظت!'));
+        .then(ensureApiSuccess)
+        .then(()=>loadConfigFromBoard())
+        .then(()=>{showModal('تنظیمات محافظت کمپرسور روی حافظه برد ذخیره شد.'); fetchStatus();})
+        .catch(err=>showModal(saveErrorText(err,'خطا در ذخیره تنظیمات محافظت!')));
       return false;
     }
 
@@ -1027,9 +1048,10 @@
       const fd=new FormData(form);
       fd.set('cycle_enabled', (cycleEnabled && cycleEnabled.checked) ? '1' : '0');
       apiFetch('/save-ap-cycle',{method:'POST', body:fd})
-        .then(r=>{ if(!r.ok) throw new Error('bad'); return r.text(); })
-        .then(()=>{ showModal('تنظیمات چرخه AP ذخیره شد.'); fetchStatus(); })
-        .catch(()=>showModal('خطا در ذخیره تنظیمات چرخه AP! لطفاً دوباره تلاش کنید.'));
+        .then(ensureApiSuccess)
+        .then(()=>loadConfigFromBoard())
+        .then(()=>{ showModal('تنظیمات چرخه AP روی حافظه برد ذخیره شد.'); fetchStatus(); })
+        .catch(err=>showModal(saveErrorText(err,'خطا در ذخیره تنظیمات چرخه AP!')));
       return false;
     }
 
@@ -1067,9 +1089,11 @@
       }
       valid.sort((a,b)=>(a.sh*60+a.sm)-(b.sh*60+b.sm));
 
-      apiFetch('/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(valid)})
-        .then(r=>{ if(!r.ok) throw new Error('save'); clearInterval(intId); fill.style.width='100%'; pct.innerText='100%'; title.innerText="ذخیره‌سازی موفقیت‌آمیز بود ✅"; text.innerText="برنامه‌ریزی جدید سناریوها بدون قطع ارتباط روی بورد ثبت شد."; setTimeout(()=>{ modal.style.display='none'; overlay.style.display='none'; resetActivity(); fetchStatus(); updateScenarioOrder(); },1600); })
-        .catch(err=>{ clearInterval(intId); modal.style.display='none'; overlay.style.display='none'; showModal('خطا در برقراری ارتباط با برد!'); resetActivity(); });
+      apiFetch('/save',{method:'POST',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:JSON.stringify(valid)})
+        .then(ensureApiSuccess)
+        .then(()=>loadScenariosFromBoard())
+        .then(()=>{ clearInterval(intId); fill.style.width='100%'; pct.innerText='100%'; title.innerText="ذخیره‌سازی موفقیت‌آمیز بود ✅"; text.innerText="برنامه‌ریزی جدید روی حافظه بورد ثبت و دوباره از بورد خوانده شد."; setTimeout(()=>{ modal.style.display='none'; overlay.style.display='none'; resetActivity(); fetchStatus(); updateScenarioOrder(); },1600); })
+        .catch(err=>{ clearInterval(intId); modal.style.display='none'; overlay.style.display='none'; showModal(saveErrorText(err,'خطا در ذخیره سناریوها روی برد!')); resetActivity(); });
       return false;
     }
 

@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">کولر سبک V2.1</string>
-    <string name="title_activity_main">کولر سبک V2.1</string>
+    <string name="app_name">کولر پایدار V2.2</string>
+    <string name="title_activity_main">کولر پایدار V2.2</string>
     <string name="package_name">com.smartcooler.esp32</string>
     <string name="custom_url_scheme">com.smartcooler.esp32</string>
 </resources>

@@ -224,13 +224,13 @@ unsigned long lastRelayStatSaveMillis = 0; // زمان آخرین ذخیره‌�
 
 // تعریف توابع سیستم
 void loadScenarios();
-void saveScenarios();
+bool saveScenarios();
 void loadWiFiSettings();
-void saveWiFiSettings();
+bool saveWiFiSettings();
 void loadOverrideSetting();
 void loadProtectionSettings();
-void saveProtectionSettings();
-void saveOverrideSetting();
+bool saveProtectionSettings();
+bool saveOverrideSetting();
 void saveTimeSetting();
 void loadTimeSetting();
 bool readTimeFile(const char* path, int &h, int &m, int &s, int &sync, unsigned long &seq, int &y, int &mon, int &d, int &wd);
@@ -246,6 +246,8 @@ void handleGetScenarios();
 void handleGetConfig();
 void handleOptions();
 void sendCorsHeaders();
+bool writeFileAtomically(const char* path, const String &payload);
+void recoverAtomicFile(const char* path);
 void handleSaveScenario();
 void handleSyncTime();
 void handleGetStatus();
@@ -499,6 +501,12 @@ void setup() {
   if (!LittleFS.begin(true)) {
     Serial.println("LittleFS Mount Failed even after formatting!");
   }
+
+  // بازیابی خودکار آخرین نسخه سالم در صورت قطع برق وسط ذخیره‌سازی تراکنشی.
+  recoverAtomicFile("/scenarios.json");
+  recoverAtomicFile("/wifi.json");
+  recoverAtomicFile("/override.txt");
+  recoverAtomicFile("/protection.json");
 
   // لود کردن تنظیمات ذخیره شده
   loadScenarios();
@@ -774,6 +782,67 @@ void checkScenarios() {
   setRelay(desiredState);
 }
 
+// اگر برق دقیقاً میان جابه‌جایی فایل اصلی و فایل موقت قطع شده باشد، نسخه پشتیبان
+// سالم را قبل از خواندن تنظیمات به نام اصلی برمی‌گردانیم.
+void recoverAtomicFile(const char* path) {
+  String backupPath = String(path) + ".bak";
+  String tempPath = String(path) + ".tmp";
+  if (!LittleFS.exists(path) && LittleFS.exists(backupPath.c_str())) {
+    LittleFS.rename(backupPath.c_str(), path);
+  }
+  LittleFS.remove(tempPath.c_str());
+}
+
+// نوشتن تراکنشی فایل تنظیمات: ابتدا فایل موقت کامل نوشته و بررسی می‌شود؛ سپس
+// نسخه قبلی به پشتیبان منتقل می‌گردد. در صورت شکست rename، نسخه قبلی بازیابی می‌شود.
+bool writeFileAtomically(const char* path, const String &payload) {
+  String tempPath = String(path) + ".tmp";
+  String backupPath = String(path) + ".bak";
+
+  LittleFS.remove(tempPath.c_str());
+  File tempFile = LittleFS.open(tempPath.c_str(), "w");
+  if (!tempFile) {
+    Serial.printf("Cannot open temporary file for %s\n", path);
+    return false;
+  }
+
+  size_t written = tempFile.print(payload);
+  tempFile.flush();
+  tempFile.close();
+  if (written != payload.length()) {
+    Serial.printf("Incomplete write for %s: %u/%u\n", path, (unsigned)written, (unsigned)payload.length());
+    LittleFS.remove(tempPath.c_str());
+    return false;
+  }
+
+  File verifyFile = LittleFS.open(tempPath.c_str(), "r");
+  bool verified = verifyFile && verifyFile.size() == payload.length();
+  if (verifyFile) verifyFile.close();
+  if (!verified) {
+    Serial.printf("Temporary file verification failed for %s\n", path);
+    LittleFS.remove(tempPath.c_str());
+    return false;
+  }
+
+  LittleFS.remove(backupPath.c_str());
+  bool hadOriginal = LittleFS.exists(path);
+  if (hadOriginal && !LittleFS.rename(path, backupPath.c_str())) {
+    Serial.printf("Cannot create backup for %s\n", path);
+    LittleFS.remove(tempPath.c_str());
+    return false;
+  }
+
+  if (!LittleFS.rename(tempPath.c_str(), path)) {
+    Serial.printf("Cannot activate new file for %s\n", path);
+    if (hadOriginal) LittleFS.rename(backupPath.c_str(), path);
+    LittleFS.remove(tempPath.c_str());
+    return false;
+  }
+
+  LittleFS.remove(backupPath.c_str());
+  return true;
+}
+
 void loadScenarios() {
   if (!LittleFS.exists("/scenarios.json")) return;
 
@@ -810,8 +879,7 @@ void loadScenarios() {
   }
 }
 
-void saveScenarios() {
-  // تغییر به DynamicJsonDocument برای جلوگیری از Stack Overflow
+bool saveScenarios() {
   DynamicJsonDocument doc(SCENARIOS_JSON_CAPACITY);
   JsonObject root = doc.to<JsonObject>();
   root["version"] = SCENARIOS_FILE_VERSION;
@@ -820,7 +888,7 @@ void saveScenarios() {
   for (int i = 0; i < MAX_SCENARIOS; i++) {
     JsonObject obj = array.createNestedObject();
     obj["active"] = scenarios[i].active;
-    obj["en"] = scenarios[i].enabled; // فعال بودن اجرای سناریو، جدا از حذف شدن آن
+    obj["en"] = scenarios[i].enabled;
     obj["sh"] = scenarios[i].startHour;
     obj["sm"] = scenarios[i].startMinute;
     obj["eh"] = scenarios[i].endHour;
@@ -828,17 +896,10 @@ void saveScenarios() {
     obj["wd"] = scenarios[i].weekdays;
   }
 
-  File configFile = LittleFS.open("/scenarios.json", "w");
-  if (!configFile) return;
-  size_t written = serializeJson(doc, configFile);
-  configFile.close();
-
-  // اگر چیزی نوشته نشد یعنی فلش پر بوده یا خرابی رخ داده؛ فایل خراب را حذف می‌کنیم
-  // تا در بوت بعدی به‌جای دیتای ناقص، به‌درستی رد شود.
-  if (written == 0) {
-    Serial.println("saveScenarios write failed!");
-    LittleFS.remove("/scenarios.json");
-  }
+  String payload;
+  payload.reserve(4096);
+  if (serializeJson(doc, payload) == 0) return false;
+  return writeFileAtomically("/scenarios.json", payload);
 }
 
 void loadWiFiSettings() {
@@ -902,40 +963,25 @@ void loadWiFiSettings() {
   }
 }
 
-void saveWiFiSettings() {
+bool saveWiFiSettings() {
   StaticJsonDocument<1024> doc;
   doc["version"] = WIFI_FILE_VERSION;
   doc["ssid"] = custom_ssid;
-
-  // اعمال رمزنگاری سخت‌افزاری بر روی پسورد شبکه محلی بورد
   doc["pass"] = encryptPassword(custom_password, 32);
-
   doc["sta_ssid"] = sta_ssid;
-
-  // اعمال رمزنگاری سخت‌افزاری بر روی پسورد مودم کاربر قبل از نگارش در فلش مموری بورد
   doc["sta_pass"] = encryptPassword(sta_password, 64);
-
   doc["internet"] = internet_enabled;
   doc["staOnMinutes"] = staOnMinutes;
   doc["staOffMinutes"] = staOffMinutes;
-
   doc["apCycleEnabled"] = apCycleEnabled;
   doc["apOnMinutes"] = apOnMinutes;
   doc["apOffMinutes"] = apOffMinutes;
   doc["apTxPowerLevel"] = apTxPowerLevel;
 
-  File configFile = LittleFS.open("/wifi.json", "w");
-  if (!configFile) return;
-  size_t written = serializeJson(doc, configFile);
-  configFile.close();
-
-  // مطابق همان الگوی محافظتی سایر توابع ذخیره‌سازی (saveScenarios/saveTimeSetting/...):
-  // اگر نوشتن ناقص بود (مثلاً فلش پر بود)، فایل نیمه‌نوشته را حذف می‌کنیم تا در بوت بعدی
-  // به‌جای خواندن دیتای خراب (که می‌تواند شامل SSID/رمز رمزنگاری‌شده باشد)، به‌درستی رد شود.
-  if (written == 0) {
-    Serial.println("saveWiFiSettings write failed!");
-    LittleFS.remove("/wifi.json");
-  }
+  String payload;
+  payload.reserve(768);
+  if (serializeJson(doc, payload) == 0) return false;
+  return writeFileAtomically("/wifi.json", payload);
 }
 
 void loadOverrideSetting() {
@@ -953,12 +999,9 @@ void loadOverrideSetting() {
   }
 }
 
-void saveOverrideSetting() {
-  File f = LittleFS.open("/override.txt", "w");
-  if (f) {
-    f.print("V"); f.print(OVERRIDE_FILE_VERSION); f.print(":"); f.print(manual_override);
-    f.close();
-  }
+bool saveOverrideSetting() {
+  String payload = "V" + String(OVERRIDE_FILE_VERSION) + ":" + String(manual_override);
+  return writeFileAtomically("/override.txt", payload);
 }
 
 // تنظیمات محافظ ضد استارت مکرر جدا از Wi-Fi نگهداری می‌شود تا توسعه‌ی آینده مستقل باشد.
@@ -971,16 +1014,13 @@ void loadProtectionSettings() {
     antiShortCycleMinutes = constrain(value, 0, MAX_ANTI_SHORT_CYCLE_MINUTES);
   }
 }
-void saveProtectionSettings() {
+bool saveProtectionSettings() {
   StaticJsonDocument<128> doc;
-  doc["version"] = PROTECTION_FILE_VERSION; doc["minOffMinutes"] = antiShortCycleMinutes;
-  File f = LittleFS.open("/protection.json", "w"); if (!f) return;
-  size_t written = serializeJson(doc, f); f.close();
-  // مطابق همان الگوی محافظتی سایر توابع ذخیره‌سازی: نوشتن ناقص را با حذف فایل خراب مشخص می‌کنیم.
-  if (written == 0) {
-    Serial.println("saveProtectionSettings write failed!");
-    LittleFS.remove("/protection.json");
-  }
+  doc["version"] = PROTECTION_FILE_VERSION;
+  doc["minOffMinutes"] = antiShortCycleMinutes;
+  String payload;
+  if (serializeJson(doc, payload) == 0) return false;
+  return writeFileAtomically("/protection.json", payload);
 }
 
 // نوشتن مقدار فعلی ساعت روی یکی از دو فایل به نوبت (Round-Robin)
@@ -1338,6 +1378,8 @@ void sendCorsHeaders() {
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
+  server.sendHeader("Access-Control-Allow-Private-Network", "true");
+  server.sendHeader("Access-Control-Max-Age", "600");
   server.sendHeader("Cache-Control", "no-store");
 }
 
@@ -1447,10 +1489,16 @@ void handleSaveScenario() {
   }
 
   if (isChanged) {
+    Scenario previous[MAX_SCENARIOS];
     for (int j = 0; j < MAX_SCENARIOS; j++) {
+      previous[j] = scenarios[j];
       scenarios[j] = temp[j];
     }
-    saveScenarios();
+    if (!saveScenarios()) {
+      for (int j = 0; j < MAX_SCENARIOS; j++) scenarios[j] = previous[j];
+      server.send(500, "text/plain", "Storage Error");
+      return;
+    }
   }
 
   server.send(200, "text/plain", "Updated");
@@ -1563,22 +1611,19 @@ void handleGetStatus() {
 void handleToggleManual() {
   // مهم‌ترین محدودیت: رله بیشتر از یک‌بار در ۱.۵ ثانیه فرمان دستی نمی‌گیرد.
   if (!allowRequest(lastToggleManualRequest, 1500UL)) return;
-  // === راه حل اساسی جلوگیری از کرش موقع استارت موتور ===
-  // ابتدا فایل فلش نوشته می‌شود، سپس رله تغییر وضعیت می‌دهد!
-  if (manual_override == 0) {
-    manual_override = 1;
-    saveOverrideSetting(); // اول روی حافظه نوشته شود
-    if (time_synchronized) saveTimeSetting(); // ذخیره زمان قبل از فرمان قطع/وصل رله
-    delay(100);            // تاخیر 100 میلی ثانیه جهت اتمام کامل عملیات نوشتن و پایداری ولتاژ
-    checkScenarios();      // روشن‌شدن دستی هم باید از همان محافظ ضد استارت مکرر عبور کند
-  } else {
-    manual_override = 0;
-    saveOverrideSetting();
-    if (time_synchronized) saveTimeSetting(); // ذخیره زمان قبل از فرمان قطع/وصل رله
-    delay(100);
-    checkScenarios();      // رله خاموش یا به حالت زمانبندی برگردد
+
+  // ابتدا حالت جدید را به‌صورت تراکنشی ذخیره می‌کنیم و فقط در صورت موفقیت به رله اعمال می‌کنیم.
+  int previousOverride = manual_override;
+  manual_override = (manual_override == 0) ? 1 : 0;
+  if (!saveOverrideSetting()) {
+    manual_override = previousOverride;
+    server.send(500, "text/plain", "Storage Error");
+    return;
   }
 
+  if (time_synchronized) saveTimeSetting();
+  delay(100); // اجازه اتمام کامل عملیات فلش پیش از فرمان رله
+  checkScenarios();
   server.send(200, "text/plain", "OK");
 }
 
@@ -1593,9 +1638,16 @@ void handleSaveAP() {
 
     // رمز AP خود برد طبق قانون ESP32 باید حداقل ۸ کاراکتر باشد.
     if (new_ssid.length() > 0 && new_pass.length() >= 8) {
+      String previousSsid = custom_ssid;
+      String previousPassword = custom_password;
       new_ssid.toCharArray(custom_ssid, 32);
       new_pass.toCharArray(custom_password, 32);
-      saveWiFiSettings();
+      if (!saveWiFiSettings()) {
+        previousSsid.toCharArray(custom_ssid, 32);
+        previousPassword.toCharArray(custom_password, 32);
+        server.send(500, "text/plain", "Storage Error");
+        return;
+      }
       saveTimeSetting();
 
       server.send(200, "text/plain", "OK");
@@ -1637,12 +1689,25 @@ void handleSaveSTA() {
   if (onVal < MIN_STA_ON_MINUTES || onVal > MAX_STA_CYCLE_MINUTES) { server.send(400, "text/plain", "Bad Request"); return; }
   if (offVal < MIN_STA_OFF_MINUTES || offVal > MAX_STA_CYCLE_MINUTES) { server.send(400, "text/plain", "Bad Request"); return; }
 
+  bool previousInternetEnabled = internet_enabled;
+  int previousStaOn = staOnMinutes, previousStaOff = staOffMinutes;
+  String previousStaSsid = sta_ssid;
+  String previousStaPassword = sta_password;
+
   internet_enabled = (new_internet == "1");
   staOnMinutes = onVal;
   staOffMinutes = offVal;
   new_sta_ssid.toCharArray(sta_ssid, 32);
   new_sta_pass.toCharArray(sta_password, 64);
-  saveWiFiSettings();
+  if (!saveWiFiSettings()) {
+    internet_enabled = previousInternetEnabled;
+    staOnMinutes = previousStaOn;
+    staOffMinutes = previousStaOff;
+    previousStaSsid.toCharArray(sta_ssid, 32);
+    previousStaPassword.toCharArray(sta_password, 64);
+    server.send(500, "text/plain", "Storage Error");
+    return;
+  }
 
   // اجازه بده تلاش بعدی NTP بلافاصله (هر ۱ دقیقه) انجام شود، نه اینکه منتظر فاصله‌ی قبلی بماند.
   ntp_synced_this_boot = false;
@@ -1670,8 +1735,13 @@ void handleSaveProtection() {
   for (size_t i = 0; i < raw.length(); i++) if (!isDigit(raw[i])) { server.send(400, "text/plain", "Bad Request"); return; }
   int value = raw.toInt();
   if (value < 0 || value > MAX_ANTI_SHORT_CYCLE_MINUTES) { server.send(400, "text/plain", "Bad Request"); return; }
+  int previousValue = antiShortCycleMinutes;
   antiShortCycleMinutes = value;
-  saveProtectionSettings();
+  if (!saveProtectionSettings()) {
+    antiShortCycleMinutes = previousValue;
+    server.send(500, "text/plain", "Storage Error");
+    return;
+  }
   server.send(200, "text/plain", "OK");
 }
 
@@ -1706,6 +1776,8 @@ void handleSaveApCycle() {
   if (offVal < MIN_AP_CYCLE_MINUTES || offVal > MAX_AP_CYCLE_MINUTES) { server.send(400, "text/plain", "Bad Request"); return; }
   if (powerVal < 0 || powerVal > MAX_AP_TX_POWER_LEVEL) { server.send(400, "text/plain", "Bad Request"); return; }
 
+  bool previousEnabled = apCycleEnabled;
+  int previousOn = apOnMinutes, previousOff = apOffMinutes, previousPower = apTxPowerLevel;
   apCycleEnabled = (enabledRaw == "1");
   apOnMinutes = onVal;
   apOffMinutes = offVal;
@@ -1716,6 +1788,14 @@ void handleSaveApCycle() {
   apCycleLastToggleMillis = millis();
   if (!apCurrentlyOn) setApRadioState(true);
 
-  saveWiFiSettings();
+  if (!saveWiFiSettings()) {
+    apCycleEnabled = previousEnabled;
+    apOnMinutes = previousOn;
+    apOffMinutes = previousOff;
+    apTxPowerLevel = previousPower;
+    applyApTxPower();
+    server.send(500, "text/plain", "Storage Error");
+    return;
+  }
   server.send(200, "text/plain", "OK");
 }
