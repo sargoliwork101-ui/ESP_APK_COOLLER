@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>کولر پایدار V2.2</title>
+  <title>کولر NVS V2.3</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -459,6 +459,7 @@
   <script>
     // ===================== مدیریت BASE_URL جهت اتصال به برد ESP32 =====================
     let BASE_URL = localStorage.getItem('esp32_base_url') || 'http://192.168.4.1';
+    let boardFirmwareCompatible = false;
 
     function openIpModal() {
       const input = document.getElementById('ip-input-field');
@@ -489,7 +490,10 @@
         showModal('آدرس IP برد به‌روزرسانی شد: ' + BASE_URL);
         initialConfigLoaded = false;
         resetActivity();
-        loadConfigFromBoard().catch(err => console.log('Board configuration unavailable:', err));
+        loadConfigFromBoard().catch(err => {
+        console.log('Board configuration unavailable:', err);
+        if(err && err.message === 'firmware_outdated') showModal('فریمور نصب‌شده روی برد قدیمی است؛ فریمور API نسخه ۳ را روی ESP32 آپلود کنید.');
+      });
         fetchStatus();
         loadScenariosFromBoard();
       }
@@ -526,10 +530,21 @@
       return fallback + ' لطفاً اتصال وای‌فای گوشی به برد را بررسی کنید.';
     }
 
+    function requireCompatibleFirmware() {
+      if (boardFirmwareCompatible) return true;
+      showModal('نسخه فریمور روی برد قدیمی یا ناسازگار است. ابتدا فریمور API نسخه ۳ با ذخیره‌سازی NVS را روی ESP32 آپلود کنید.');
+      return false;
+    }
+
     function loadConfigFromBoard() {
       return apiFetch('/config?t=' + Date.now())
         .then(r => { if (!r.ok) throw new Error('config'); return r.json(); })
         .then(data => {
+          boardFirmwareCompatible = data.storageBackend === 'NVS' && Number(data.firmwareApiVersion) >= 3;
+          if (!boardFirmwareCompatible) {
+            const error = new Error('firmware_outdated');
+            throw error;
+          }
           const setValue = (selector, value) => {
             const input = document.querySelector(selector);
             if (input && value !== undefined && value !== null) input.value = value;
@@ -732,6 +747,7 @@
     }
 
     function toggleManual(){
+      if(!requireCompatibleFirmware()) return;
       let btn = document.getElementById('manual-btn');
       if(btn){
         btn.classList.toggle('isoff');
@@ -962,6 +978,7 @@
 
     function saveApForm(event){
       event.preventDefault();
+      if(!requireCompatibleFirmware()) return false;
       const form=event.target;
       const passInput=form.querySelector('input[name="pass"]');
       if(passInput && passInput.value.length<8){
@@ -990,6 +1007,7 @@
 
     function saveStaForm(event){
       event.preventDefault();
+      if(!requireCompatibleFirmware()) return false;
       const form=event.target;
       const passInput=form.querySelector('input[name="sta_pass"]');
       if(passInput && passInput.value.length>0 && passInput.value.length<8){
@@ -1022,7 +1040,8 @@
     }
 
     function saveProtectionForm(event){
-      event.preventDefault(); const form=event.target; const input=form.querySelector('input[name="min_off"]');
+      event.preventDefault();
+      if(!requireCompatibleFirmware()) return false; const form=event.target; const input=form.querySelector('input[name="min_off"]');
       const value=input ? Number(input.value) : NaN;
       if(!Number.isInteger(value) || value<0 || value>1440){ showModal('زمان محافظت باید یک عدد صحیح بین ۰ تا ۱۴۴۰ دقیقه باشد.'); return false; }
       apiFetch('/save-protection',{method:'POST',body:new FormData(form)})
@@ -1035,6 +1054,7 @@
 
     function saveApCycleForm(event){
       event.preventDefault();
+      if(!requireCompatibleFirmware()) return false;
       const form=event.target;
       const onInput=form.querySelector('input[name="on_minutes"]');
       const offInput=form.querySelector('input[name="off_minutes"]');
@@ -1057,6 +1077,7 @@
 
     function saveScenariosForm(event){
       event.preventDefault();
+      if(!requireCompatibleFirmware()) return false;
       if(!validateForm(event)) return false;
       const modal=document.getElementById('progress-modal');
       const overlay=document.getElementById('custom-alert-overlay');
@@ -1341,7 +1362,10 @@
 
     document.addEventListener('DOMContentLoaded', () => {
       initScenarioCards();
-      loadConfigFromBoard().catch(err => console.log('Board configuration unavailable:', err));
+      loadConfigFromBoard().catch(err => {
+        console.log('Board configuration unavailable:', err);
+        if(err && err.message === 'firmware_outdated') showModal('فریمور نصب‌شده روی برد قدیمی است؛ فریمور API نسخه ۳ را روی ESP32 آپلود کنید.');
+      });
       loadScenariosFromBoard();
       fetchStatus();
     });

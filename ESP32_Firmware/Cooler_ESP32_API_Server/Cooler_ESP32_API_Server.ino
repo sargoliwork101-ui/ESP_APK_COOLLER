@@ -1,6 +1,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <LittleFS.h>
+#include <Preferences.h>
 #include <ArduinoJson.h>
 #include <time.h>
 #include <esp_task_wdt.h>
@@ -246,8 +247,8 @@ void handleGetScenarios();
 void handleGetConfig();
 void handleOptions();
 void sendCorsHeaders();
-bool writeFileAtomically(const char* path, const String &payload);
-void recoverAtomicFile(const char* path);
+bool saveNvsString(const char* key, const String &payload);
+bool loadNvsString(const char* key, String &payload);
 void handleSaveScenario();
 void handleSyncTime();
 void handleGetStatus();
@@ -501,12 +502,6 @@ void setup() {
   if (!LittleFS.begin(true)) {
     Serial.println("LittleFS Mount Failed even after formatting!");
   }
-
-  // بازیابی خودکار آخرین نسخه سالم در صورت قطع برق وسط ذخیره‌سازی تراکنشی.
-  recoverAtomicFile("/scenarios.json");
-  recoverAtomicFile("/wifi.json");
-  recoverAtomicFile("/override.txt");
-  recoverAtomicFile("/protection.json");
 
   // لود کردن تنظیمات ذخیره شده
   loadScenarios();
@@ -782,101 +777,70 @@ void checkScenarios() {
   setRelay(desiredState);
 }
 
-// اگر برق دقیقاً میان جابه‌جایی فایل اصلی و فایل موقت قطع شده باشد، نسخه پشتیبان
-// سالم را قبل از خواندن تنظیمات به نام اصلی برمی‌گردانیم.
-void recoverAtomicFile(const char* path) {
-  String backupPath = String(path) + ".bak";
-  String tempPath = String(path) + ".tmp";
-  if (!LittleFS.exists(path) && LittleFS.exists(backupPath.c_str())) {
-    LittleFS.rename(backupPath.c_str(), path);
+// تنظیمات اصلی در NVS ذخیره می‌شوند؛ NVS مستقل از پارتیشن LittleFS/SPIFFS است و
+// با خاموش/روشن شدن یا تعویض معمول فریمور پاک نمی‌شود. LittleFS فقط برای مهاجرت نسخه قدیمی خوانده می‌شود.
+const char* NVS_NAMESPACE = "cooler";
+
+bool saveNvsString(const char* key, const String &payload) {
+  Preferences preferences;
+  if (!preferences.begin(NVS_NAMESPACE, false)) {
+    Serial.printf("NVS open failed for key %s\n", key);
+    return false;
   }
-  LittleFS.remove(tempPath.c_str());
+  size_t written = preferences.putString(key, payload);
+  String verified = preferences.getString(key, "");
+  preferences.end();
+  bool ok = (written > 0 && verified == payload);
+  if (!ok) Serial.printf("NVS write verification failed for key %s\n", key);
+  return ok;
 }
 
-// نوشتن تراکنشی فایل تنظیمات: ابتدا فایل موقت کامل نوشته و بررسی می‌شود؛ سپس
-// نسخه قبلی به پشتیبان منتقل می‌گردد. در صورت شکست rename، نسخه قبلی بازیابی می‌شود.
-bool writeFileAtomically(const char* path, const String &payload) {
-  String tempPath = String(path) + ".tmp";
-  String backupPath = String(path) + ".bak";
-
-  LittleFS.remove(tempPath.c_str());
-  File tempFile = LittleFS.open(tempPath.c_str(), "w");
-  if (!tempFile) {
-    Serial.printf("Cannot open temporary file for %s\n", path);
-    return false;
-  }
-
-  size_t written = tempFile.print(payload);
-  tempFile.flush();
-  tempFile.close();
-  if (written != payload.length()) {
-    Serial.printf("Incomplete write for %s: %u/%u\n", path, (unsigned)written, (unsigned)payload.length());
-    LittleFS.remove(tempPath.c_str());
-    return false;
-  }
-
-  File verifyFile = LittleFS.open(tempPath.c_str(), "r");
-  bool verified = verifyFile && verifyFile.size() == payload.length();
-  if (verifyFile) verifyFile.close();
-  if (!verified) {
-    Serial.printf("Temporary file verification failed for %s\n", path);
-    LittleFS.remove(tempPath.c_str());
-    return false;
-  }
-
-  LittleFS.remove(backupPath.c_str());
-  bool hadOriginal = LittleFS.exists(path);
-  if (hadOriginal && !LittleFS.rename(path, backupPath.c_str())) {
-    Serial.printf("Cannot create backup for %s\n", path);
-    LittleFS.remove(tempPath.c_str());
-    return false;
-  }
-
-  if (!LittleFS.rename(tempPath.c_str(), path)) {
-    Serial.printf("Cannot activate new file for %s\n", path);
-    if (hadOriginal) LittleFS.rename(backupPath.c_str(), path);
-    LittleFS.remove(tempPath.c_str());
-    return false;
-  }
-
-  LittleFS.remove(backupPath.c_str());
-  return true;
+bool loadNvsString(const char* key, String &payload) {
+  Preferences preferences;
+  if (!preferences.begin(NVS_NAMESPACE, true)) return false;
+  bool exists = preferences.isKey(key);
+  if (exists) payload = preferences.getString(key, "");
+  preferences.end();
+  return exists && payload.length() > 0;
 }
 
 void loadScenarios() {
-  if (!LittleFS.exists("/scenarios.json")) return;
+  String payload;
+  bool loadedFromNvs = loadNvsString("scenarios", payload);
 
-  File configFile = LittleFS.open("/scenarios.json", "r");
-  if (!configFile) return;
+  // مهاجرت یک‌باره از فایل LittleFS نسخه‌های قبلی، بدون حذف داده قدیمی کاربر.
+  if (!loadedFromNvs) {
+    if (!LittleFS.exists("/scenarios.json")) return;
+    File file = LittleFS.open("/scenarios.json", "r");
+    if (!file) return;
+    payload = file.readString();
+    file.close();
+  }
 
-  // تغییر به DynamicJsonDocument برای جلوگیری از Stack Overflow
   DynamicJsonDocument doc(SCENARIOS_JSON_CAPACITY);
-  DeserializationError error = deserializeJson(doc, configFile);
-  configFile.close();
-
+  DeserializationError error = deserializeJson(doc, payload);
   if (error) {
     Serial.print("loadScenarios JSON error: ");
     Serial.println(error.c_str());
     return;
   }
 
-  // Migration سناریوها: نسخه ۱ آرایهٔ مستقیم بود؛ نسخه ۲ یک شیء شامل version و items است.
   JsonArray array = doc.is<JsonArray>() ? doc.as<JsonArray>() : doc["items"].as<JsonArray>();
   int i = 0;
   for (JsonObject v : array) {
     if (i >= MAX_SCENARIOS) break;
     bool itemActive = v["active"] | false;
     scenarios[i].active = itemActive;
-    // برای سازگاری با فایل‌های قدیمی: اگر کلید en وجود نداشت، سناریوهای موجود فعال فرض می‌شوند
     scenarios[i].enabled = v.containsKey("en") ? (bool)v["en"] : itemActive;
     scenarios[i].startHour = v["sh"] | 0;
     scenarios[i].startMinute = v["sm"] | 0;
     scenarios[i].endHour = v["eh"] | 0;
     scenarios[i].endMinute = v["em"] | 0;
-    // سازگاری با سناریوهای قدیمی: نبودن wd یعنی اجرا در تمام روزها
     scenarios[i].weekdays = v.containsKey("wd") ? (uint8_t)(v["wd"] | 0x7F) : 0x7F;
     i++;
   }
+
+  if (!loadedFromNvs) saveScenarios();
 }
 
 bool saveScenarios() {
@@ -899,68 +863,40 @@ bool saveScenarios() {
   String payload;
   payload.reserve(4096);
   if (serializeJson(doc, payload) == 0) return false;
-  return writeFileAtomically("/scenarios.json", payload);
+  return saveNvsString("scenarios", payload);
 }
 
 void loadWiFiSettings() {
-  if (!LittleFS.exists("/wifi.json")) return;
+  String payload;
+  bool loadedFromNvs = loadNvsString("wifi", payload);
+  if (!loadedFromNvs) {
+    if (!LittleFS.exists("/wifi.json")) return;
+    File file = LittleFS.open("/wifi.json", "r");
+    if (!file) return;
+    payload = file.readString();
+    file.close();
+  }
 
-  File configFile = LittleFS.open("/wifi.json", "r");
-  if (!configFile) return;
-
-  // بافر به دلیل تبدیل متن به هگزادسیمال رمزنگاری‌شده افزایش یافته است
   StaticJsonDocument<1024> doc;
-  DeserializationError error = deserializeJson(doc, configFile);
-  configFile.close();
-
-  if (error) return;
-  // wifi.json نسخهٔ ۱ فاقد کلید version بود؛ هر دو فرمت همچنان خوانده می‌شوند.
+  if (deserializeJson(doc, payload)) return;
 
   if (doc.containsKey("ssid")) { strncpy(custom_ssid, doc["ssid"], 31); custom_ssid[31] = '\0'; }
-  if (doc.containsKey("pass")) {
-    // بارگذاری و رمزگشایی هوشمند رمز عبور فرستنده (AP)
-    loadAndDecryptPassword(doc["pass"], custom_password, 32);
-  }
+  if (doc.containsKey("pass")) loadAndDecryptPassword(doc["pass"], custom_password, 32);
   if (doc.containsKey("sta_ssid")) { strncpy(sta_ssid, doc["sta_ssid"], 31); sta_ssid[31] = '\0'; }
-  if (doc.containsKey("sta_pass")) {
-    // بارگذاری و رمزگشایی هوشمند رمز عبور اینترنت (STA)
-    loadAndDecryptPassword(doc["sta_pass"], sta_password, 64);
-  }
+  if (doc.containsKey("sta_pass")) loadAndDecryptPassword(doc["sta_pass"], sta_password, 64);
+  if (doc.containsKey("internet")) internet_enabled = doc["internet"] | true;
 
-  // در نسخه‌های جدید فقط همین کلید تعیین می‌کند که اصلاً از مودم/اینترنت استفاده شود یا نه.
-  if (doc.containsKey("internet")) { internet_enabled = doc["internet"] | true; }
-
-  // مهاجرت از نسخهٔ ۴: اگر کاربر قبلاً کلید جداگانهٔ STA را خاموش کرده بود و هنوز فیلدهای جدید چرخه وجود ندارند،
-  // همان رفتار به «اینترنت غیرفعال» تبدیل می‌شود تا انتخاب قبلی کاربر از بین نرود.
   if (doc.containsKey("staEnabled") && !doc.containsKey("staOnMinutes") && !doc.containsKey("staOffMinutes")) {
-    bool legacyStaEnabled = doc["staEnabled"] | true;
-    if (!legacyStaEnabled) internet_enabled = false;
+    if (!(doc["staEnabled"] | true)) internet_enabled = false;
   }
+  if (doc.containsKey("staOnMinutes")) staOnMinutes = constrain((int)(doc["staOnMinutes"] | staOnMinutes), MIN_STA_ON_MINUTES, MAX_STA_CYCLE_MINUTES);
+  if (doc.containsKey("staOffMinutes")) staOffMinutes = constrain((int)(doc["staOffMinutes"] | staOffMinutes), MIN_STA_OFF_MINUTES, MAX_STA_CYCLE_MINUTES);
+  if (doc.containsKey("apCycleEnabled")) apCycleEnabled = doc["apCycleEnabled"] | false;
+  if (doc.containsKey("apOnMinutes")) apOnMinutes = constrain((int)(doc["apOnMinutes"] | apOnMinutes), MIN_AP_CYCLE_MINUTES, MAX_AP_CYCLE_MINUTES);
+  if (doc.containsKey("apOffMinutes")) apOffMinutes = constrain((int)(doc["apOffMinutes"] | apOffMinutes), MIN_AP_CYCLE_MINUTES, MAX_AP_CYCLE_MINUTES);
+  if (doc.containsKey("apTxPowerLevel")) apTxPowerLevel = constrain((int)(doc["apTxPowerLevel"] | apTxPowerLevel), 0, MAX_AP_TX_POWER_LEVEL);
 
-  if (doc.containsKey("staOnMinutes")) {
-    int v = doc["staOnMinutes"] | staOnMinutes;
-    staOnMinutes = constrain(v, MIN_STA_ON_MINUTES, MAX_STA_CYCLE_MINUTES);
-  }
-  if (doc.containsKey("staOffMinutes")) {
-    int v = doc["staOffMinutes"] | staOffMinutes;
-    staOffMinutes = constrain(v, MIN_STA_OFF_MINUTES, MAX_STA_CYCLE_MINUTES);
-  }
-
-  // فیلدهای نسخه ۳: چرخه‌ی AP و قدرت سیگنال. فایل‌های قدیمی‌تر (نسخه ۲ و پایین‌تر) فاقد این کلیدها هستند
-  // و به همین دلیل مقدار پیش‌فرض تعریف‌شده در بالای برنامه (چرخه غیرفعال، توان حداکثر) حفظ می‌شود.
-  if (doc.containsKey("apCycleEnabled")) { apCycleEnabled = doc["apCycleEnabled"] | false; }
-  if (doc.containsKey("apOnMinutes")) {
-    int v = doc["apOnMinutes"] | apOnMinutes;
-    apOnMinutes = constrain(v, MIN_AP_CYCLE_MINUTES, MAX_AP_CYCLE_MINUTES);
-  }
-  if (doc.containsKey("apOffMinutes")) {
-    int v = doc["apOffMinutes"] | apOffMinutes;
-    apOffMinutes = constrain(v, MIN_AP_CYCLE_MINUTES, MAX_AP_CYCLE_MINUTES);
-  }
-  if (doc.containsKey("apTxPowerLevel")) {
-    int v = doc["apTxPowerLevel"] | apTxPowerLevel;
-    apTxPowerLevel = constrain(v, 0, MAX_AP_TX_POWER_LEVEL);
-  }
+  if (!loadedFromNvs) saveWiFiSettings();
 }
 
 bool saveWiFiSettings() {
@@ -981,46 +917,54 @@ bool saveWiFiSettings() {
   String payload;
   payload.reserve(768);
   if (serializeJson(doc, payload) == 0) return false;
-  return writeFileAtomically("/wifi.json", payload);
+  return saveNvsString("wifi", payload);
 }
 
 void loadOverrideSetting() {
-  if (!LittleFS.exists("/override.txt")) {
-    manual_override = 0;
-    return;
+  String value;
+  bool loadedFromNvs = loadNvsString("override", value);
+  if (!loadedFromNvs) {
+    if (!LittleFS.exists("/override.txt")) { manual_override = 0; return; }
+    File file = LittleFS.open("/override.txt", "r");
+    if (!file) { manual_override = 0; return; }
+    value = file.readString();
+    file.close();
   }
-  File f = LittleFS.open("/override.txt", "r");
-  if (f) {
-    String val = f.readString();
-    // سازگاری با فایل قدیمی که فقط 0 یا 1 بود.
-    manual_override = val.startsWith("V") ? val.substring(val.indexOf(':') + 1).toInt() : val.toInt();
-    manual_override = (manual_override == 1) ? 1 : 0;
-    f.close();
-  }
+  manual_override = value.startsWith("V") ? value.substring(value.indexOf(':') + 1).toInt() : value.toInt();
+  manual_override = (manual_override == 1) ? 1 : 0;
+  if (!loadedFromNvs) saveOverrideSetting();
 }
 
 bool saveOverrideSetting() {
   String payload = "V" + String(OVERRIDE_FILE_VERSION) + ":" + String(manual_override);
-  return writeFileAtomically("/override.txt", payload);
+  return saveNvsString("override", payload);
 }
 
 // تنظیمات محافظ ضد استارت مکرر جدا از Wi-Fi نگهداری می‌شود تا توسعه‌ی آینده مستقل باشد.
 void loadProtectionSettings() {
-  if (!LittleFS.exists("/protection.json")) return;
-  File f = LittleFS.open("/protection.json", "r"); if (!f) return;
-  StaticJsonDocument<128> doc; DeserializationError err = deserializeJson(doc, f); f.close();
-  if (!err && doc.containsKey("minOffMinutes")) {
-    int value = doc["minOffMinutes"] | 3;
-    antiShortCycleMinutes = constrain(value, 0, MAX_ANTI_SHORT_CYCLE_MINUTES);
+  String payload;
+  bool loadedFromNvs = loadNvsString("protection", payload);
+  if (!loadedFromNvs) {
+    if (!LittleFS.exists("/protection.json")) return;
+    File file = LittleFS.open("/protection.json", "r");
+    if (!file) return;
+    payload = file.readString();
+    file.close();
+  }
+  StaticJsonDocument<128> doc;
+  if (!deserializeJson(doc, payload) && doc.containsKey("minOffMinutes")) {
+    antiShortCycleMinutes = constrain((int)(doc["minOffMinutes"] | 3), 0, MAX_ANTI_SHORT_CYCLE_MINUTES);
+    if (!loadedFromNvs) saveProtectionSettings();
   }
 }
+
 bool saveProtectionSettings() {
   StaticJsonDocument<128> doc;
   doc["version"] = PROTECTION_FILE_VERSION;
   doc["minOffMinutes"] = antiShortCycleMinutes;
   String payload;
   if (serializeJson(doc, payload) == 0) return false;
-  return writeFileAtomically("/protection.json", payload);
+  return saveNvsString("protection", payload);
 }
 
 // نوشتن مقدار فعلی ساعت روی یکی از دو فایل به نوبت (Round-Robin)
@@ -1391,7 +1335,7 @@ void handleOptions() {
 // The UI is bundled in the Android application. ESP32 now serves only small JSON APIs.
 void handleRoot() {
   sendCorsHeaders();
-  server.send(200, "application/json", "{\"status\":\"online\",\"device\":\"ESP32 Cooler\",\"apiVersion\":1}");
+  server.send(200, "application/json", "{\"status\":\"online\",\"device\":\"ESP32 Cooler\",\"apiVersion\":3,\"storageBackend\":\"NVS\"}");
 }
 
 void handleGetScenarios() {
@@ -1430,6 +1374,8 @@ void handleGetConfig() {
   doc["apOffMinutes"] = apOffMinutes;
   doc["apTxPowerLevel"] = apTxPowerLevel;
   doc["protectionMinutes"] = antiShortCycleMinutes;
+  doc["storageBackend"] = "NVS";
+  doc["firmwareApiVersion"] = 3;
   String body;
   serializeJson(doc, body);
   sendCorsHeaders();
